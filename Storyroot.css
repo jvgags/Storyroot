@@ -159,6 +159,13 @@ body {
     overflow: hidden;
 }
 
+/* Scrollable content area for sidebar */
+.sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
 .sidebar-header {
     padding: 15px;
     border-bottom: 1px solid var(--border-color);
@@ -551,7 +558,7 @@ body {
 #markdownEditor {
     flex: 1;
     width: 100%;
-    padding: 40px;
+    padding: 20px;
     background: var(--bg-primary);
     border: none;
     color: var(--text-primary);
@@ -565,7 +572,7 @@ body {
 .preview-pane {
     flex: 1;
     overflow-y: auto;
-    padding: 40px;
+    padding: 10px;
 }
 
 .panes-wrapper {
@@ -738,11 +745,12 @@ body {
 
 /* ========== RIGHT SIDEBAR ========== */
 
-.metadata-section, .tags-section, .links-section, .backlinks-section {
+.toc-section, .metadata-section, .tags-section, .links-section, .backlinks-section {
     padding: 15px;
     border-bottom: 1px solid var(--border-color);
 }
 
+.toc-section h4,
 .metadata-section h4,
 .tags-section h4,
 .links-section h4,
@@ -752,6 +760,66 @@ body {
     text-transform: uppercase;
     color: var(--text-tertiary);
     margin-bottom: 12px;
+}
+
+/* Table of Contents Styles */
+.toc-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.toc-item {
+    padding: 4px 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    line-height: 1.4;
+}
+
+.toc-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.toc-item.active {
+    background: var(--accent-primary);
+    color: white;
+}
+
+/* Indentation levels for header hierarchy */
+.toc-item.level-1 {
+    padding-left: 8px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.toc-item.level-2 {
+    padding-left: 20px;
+    font-weight: 500;
+}
+
+.toc-item.level-3 {
+    padding-left: 32px;
+}
+
+.toc-item.level-4 {
+    padding-left: 44px;
+    font-size: 12px;
+}
+
+.toc-item.level-5 {
+    padding-left: 56px;
+    font-size: 12px;
+}
+
+.toc-item.level-6 {
+    padding-left: 68px;
+    font-size: 11px;
 }
 
 .meta-item {

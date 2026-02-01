@@ -707,6 +707,15 @@ function updatePreview() {
     // Convert markdown to HTML
     const html = marked.parse(content);
     preview.innerHTML = DOMPurify.sanitize(html);
+    
+    // Update table of contents
+    if (currentNoteId) {
+        const note = notes.find(n => n.id === currentNoteId);
+        if (note) {
+            // Create a temporary note object with current content for TOC update
+            updateTableOfContents({ ...note, content: editor.value });
+        }
+    }
 }
 
 /* ========== UI RENDERING ========== */
@@ -876,6 +885,9 @@ function updateRightSidebar(note) {
     document.getElementById('createdDate').textContent = formatDate(note.created);
     document.getElementById('modifiedDate').textContent = formatDate(note.modified);
     document.getElementById('wordCount').textContent = countWords(note.content);
+    
+    // Update table of contents
+    updateTableOfContents(note);
     
     // Update tags
     const tagsContainer = document.getElementById('noteTags');
@@ -1399,6 +1411,85 @@ function resetAutoSaveTimer() {
             saveCurrentNote();
         }
     }, 3000); // Auto-save after 3 seconds of inactivity
+}
+
+/* ========== TABLE OF CONTENTS ========== */
+
+function updateTableOfContents(note) {
+    const tocContainer = document.getElementById('tableOfContents');
+    
+    if (!note || !note.content) {
+        tocContainer.innerHTML = '<span class="empty-message">No headers</span>';
+        return;
+    }
+    
+    // Parse headers from markdown content
+    const headers = parseHeaders(note.content);
+    
+    if (headers.length === 0) {
+        tocContainer.innerHTML = '<span class="empty-message">No headers</span>';
+        return;
+    }
+    
+    // Build table of contents HTML
+    tocContainer.innerHTML = '';
+    headers.forEach((header, index) => {
+        const tocItem = document.createElement('div');
+        tocItem.className = `toc-item level-${header.level}`;
+        tocItem.textContent = header.text;
+        tocItem.dataset.headerId = `header-${index}`;
+        
+        // Click handler to scroll to header in preview
+        tocItem.addEventListener('click', () => {
+            scrollToHeader(index);
+        });
+        
+        tocContainer.appendChild(tocItem);
+    });
+}
+
+function parseHeaders(markdown) {
+    const headers = [];
+    const lines = markdown.split('\n');
+    
+    lines.forEach(line => {
+        // Match markdown headers (# Header)
+        const match = line.match(/^(#{1,6})\s+(.+)$/);
+        if (match) {
+            const level = match[1].length; // Number of # symbols
+            const text = match[2].trim();
+            headers.push({ level, text });
+        }
+    });
+    
+    return headers;
+}
+
+function scrollToHeader(headerIndex) {
+    const preview = document.getElementById('markdownPreview');
+    
+    // Find all headers in the preview
+    const headers = preview.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    
+    if (headers[headerIndex]) {
+        headers[headerIndex].scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start'
+        });
+        
+        // Highlight the header briefly
+        headers[headerIndex].style.backgroundColor = 'var(--accent-primary)';
+        headers[headerIndex].style.color = 'white';
+        headers[headerIndex].style.padding = '4px 8px';
+        headers[headerIndex].style.borderRadius = '4px';
+        headers[headerIndex].style.transition = 'all 0.3s';
+        
+        setTimeout(() => {
+            headers[headerIndex].style.backgroundColor = '';
+            headers[headerIndex].style.color = '';
+            headers[headerIndex].style.padding = '';
+        }, 1000);
+    }
 }
 
 /* ========== UTILITY FUNCTIONS ========== */

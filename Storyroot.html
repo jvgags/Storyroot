@@ -168,46 +168,57 @@
                 <button class="icon-btn" onclick="toggleRightSidebar()">▶</button>
             </div>
 
-            <!-- Note Metadata -->
-            <div class="metadata-section">
-                <h4>Metadata</h4>
-                <div id="noteMetadata">
-                    <div class="meta-item">
-                        <span class="meta-label">Created:</span>
-                        <span class="meta-value" id="createdDate">-</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">Modified:</span>
-                        <span class="meta-value" id="modifiedDate">-</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">Words:</span>
-                        <span class="meta-value" id="wordCount">0</span>
+            <!-- Scrollable Content Container -->
+            <div class="sidebar-content">
+                <!-- Table of Contents -->
+                <div class="toc-section" id="tocSection">
+                    <h4>Table of Contents</h4>
+                    <div id="tableOfContents" class="toc-container">
+                        <span class="empty-message">No headers</span>
                     </div>
                 </div>
-            </div>
 
-            <!-- Tags -->
-            <div class="tags-section">
-                <h4>Tags</h4>
-                <div id="noteTags" class="tags-container">
-                    <span class="empty-message">No tags</span>
+                <!-- Note Metadata -->
+                <div class="metadata-section">
+                    <h4>Metadata</h4>
+                    <div id="noteMetadata">
+                        <div class="meta-item">
+                            <span class="meta-label">Created:</span>
+                            <span class="meta-value" id="createdDate">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Modified:</span>
+                            <span class="meta-value" id="modifiedDate">-</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Words:</span>
+                            <span class="meta-value" id="wordCount">0</span>
+                        </div>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Outgoing Links -->
-            <div class="links-section">
-                <h4>Links in this note</h4>
-                <div id="outgoingLinks" class="links-container">
-                    <span class="empty-message">No links</span>
+                <!-- Tags -->
+                <div class="tags-section">
+                    <h4>Tags</h4>
+                    <div id="noteTags" class="tags-container">
+                        <span class="empty-message">No tags</span>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Backlinks -->
-            <div class="backlinks-section">
-                <h4>Backlinks</h4>
-                <div id="backlinks" class="links-container">
-                    <span class="empty-message">No backlinks</span>
+                <!-- Outgoing Links -->
+                <div class="links-section">
+                    <h4>Links in this note</h4>
+                    <div id="outgoingLinks" class="links-container">
+                        <span class="empty-message">No links</span>
+                    </div>
+                </div>
+
+                <!-- Backlinks -->
+                <div class="backlinks-section">
+                    <h4>Backlinks</h4>
+                    <div id="backlinks" class="links-container">
+                        <span class="empty-message">No backlinks</span>
+                    </div>
                 </div>
             </div>
         </aside>
