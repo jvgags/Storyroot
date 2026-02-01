@@ -1452,13 +1452,13 @@ function parseHeaders(markdown) {
     const headers = [];
     const lines = markdown.split('\n');
     
-    lines.forEach(line => {
+    lines.forEach((line, lineNumber) => {
         // Match markdown headers (# Header)
         const match = line.match(/^(#{1,6})\s+(.+)$/);
         if (match) {
             const level = match[1].length; // Number of # symbols
             const text = match[2].trim();
-            headers.push({ level, text });
+            headers.push({ level, text, lineNumber });
         }
     });
     
@@ -1466,30 +1466,99 @@ function parseHeaders(markdown) {
 }
 
 function scrollToHeader(headerIndex) {
+    const editor = document.getElementById('markdownEditor');
     const preview = document.getElementById('markdownPreview');
+    const note = notes.find(n => n.id === currentNoteId);
     
-    // Find all headers in the preview
-    const headers = preview.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    if (!note) return;
     
-    if (headers[headerIndex]) {
-        headers[headerIndex].scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'start'
-        });
+    // Parse headers to get line numbers
+    const headers = parseHeaders(note.content);
+    const header = headers[headerIndex];
+    
+    if (!header) return;
+    
+    // Scroll and highlight in markdown editor
+    scrollToLineInEditor(editor, header.lineNumber);
+    
+    // Scroll and highlight in preview (only if preview is visible)
+    if (currentEditMode !== 'edit') {
+        const previewHeaders = preview.querySelectorAll('h1, h2, h3, h4, h5, h6');
         
-        // Highlight the header briefly
-        headers[headerIndex].style.backgroundColor = 'var(--accent-primary)';
-        headers[headerIndex].style.color = 'white';
-        headers[headerIndex].style.padding = '4px 8px';
-        headers[headerIndex].style.borderRadius = '4px';
-        headers[headerIndex].style.transition = 'all 0.3s';
-        
-        setTimeout(() => {
-            headers[headerIndex].style.backgroundColor = '';
-            headers[headerIndex].style.color = '';
-            headers[headerIndex].style.padding = '';
-        }, 1000);
+        if (previewHeaders[headerIndex]) {
+            previewHeaders[headerIndex].scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'start'
+            });
+            
+            // Highlight the header briefly in preview
+            previewHeaders[headerIndex].style.backgroundColor = 'var(--accent-primary)';
+            previewHeaders[headerIndex].style.color = 'white';
+            previewHeaders[headerIndex].style.padding = '4px 8px';
+            previewHeaders[headerIndex].style.borderRadius = '4px';
+            previewHeaders[headerIndex].style.transition = 'all 0.3s';
+            
+            setTimeout(() => {
+                previewHeaders[headerIndex].style.backgroundColor = '';
+                previewHeaders[headerIndex].style.color = '';
+                previewHeaders[headerIndex].style.padding = '';
+            }, 1000);
+        }
     }
+}
+
+function scrollToLineInEditor(editor, lineNumber) {
+    const lines = editor.value.split('\n');
+    
+    // Calculate the character position of the line
+    let charPosition = 0;
+    for (let i = 0; i < lineNumber && i < lines.length; i++) {
+        charPosition += lines[i].length + 1; // +1 for newline character
+    }
+    
+    // Get the line text
+    const lineStart = charPosition;
+    const lineEnd = charPosition + (lines[lineNumber] ? lines[lineNumber].length : 0);
+    
+    // Focus editor first
+    editor.focus();
+    
+    // Set selection to the target line
+    editor.setSelectionRange(lineStart, lineEnd);
+    
+    // Get cursor position in pixels using a temporary div trick
+    const style = window.getComputedStyle(editor);
+    const div = document.createElement('div');
+    div.style.position = 'absolute';
+    div.style.visibility = 'hidden';
+    div.style.whiteSpace = 'pre-wrap';
+    div.style.wordWrap = 'break-word';
+    div.style.font = style.font;
+    div.style.width = editor.clientWidth + 'px';
+    div.style.padding = style.padding;
+    div.style.border = style.border;
+    
+    // Add text up to the target line
+    div.textContent = lines.slice(0, lineNumber).join('\n');
+    document.body.appendChild(div);
+    
+    // Get the height to this point
+    const scrollToPosition = div.offsetHeight;
+    document.body.removeChild(div);
+    
+    // Scroll to position with the line in the upper third
+    const offset = editor.clientHeight / 3;
+    editor.scrollTop = Math.max(0, scrollToPosition - offset);
+    
+    // Keep selection for highlight effect
+    setTimeout(() => {
+        editor.setSelectionRange(lineStart, lineEnd);
+    }, 50);
+    
+    // Clear selection after a moment
+    setTimeout(() => {
+        editor.setSelectionRange(lineEnd, lineEnd);
+    }, 800);
 }
 
 /* ========== UTILITY FUNCTIONS ========== */
