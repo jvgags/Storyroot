@@ -270,6 +270,9 @@ window.onload = async function() {
     // Update UI
     renderFileExplorer();
     
+    // Set initial view mode to edit
+    switchEditorTab('edit');
+    
     if (notes.length === 0) {
         showEmptyState();
     } else if (settings.lastOpenedNote) {
@@ -1019,11 +1022,13 @@ function switchEditorTab(mode) {
     const previewPane = document.getElementById('previewPane');
     const container = document.getElementById('editorContainer');
     
-    // Update tab buttons
-    document.querySelectorAll('.tab-btn').forEach(btn => {
+    // Update view mode buttons
+    document.querySelectorAll('.view-mode-btn').forEach(btn => {
         btn.classList.remove('active');
+        if (btn.getAttribute('data-mode') === mode) {
+            btn.classList.add('active');
+        }
     });
-    event.target.classList.add('active');
     
     if (mode === 'edit') {
         editPane.style.display = 'flex';
@@ -1046,10 +1051,7 @@ function toggleEditMode() {
     const modes = ['edit', 'preview', 'split'];
     const currentIndex = modes.indexOf(currentEditMode);
     const nextMode = modes[(currentIndex + 1) % modes.length];
-    
-    // Find and click the appropriate tab
-    const tabs = document.querySelectorAll('.tab-btn');
-    tabs[modes.indexOf(nextMode)].click();
+    switchEditorTab(nextMode);
 }
 
 /* ========== SEARCH ========== */

@@ -479,35 +479,6 @@ body {
     gap: 10px;
 }
 
-/* Editor Tabs */
-.editor-tabs {
-    display: flex;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-color);
-    padding: 0 20px;
-}
-
-.tab-btn {
-    padding: 10px 20px;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    transition: all 0.2s;
-}
-
-.tab-btn:hover {
-    color: var(--text-primary);
-}
-
-.tab-btn.active {
-    color: var(--accent-primary);
-    border-bottom-color: var(--accent-primary);
-}
-
 /* Editor Container */
 .editor-container {
     flex: 1;
@@ -566,6 +537,11 @@ body {
     opacity: 0.5;
 }
 
+.toolbar-btn.view-mode-btn.active {
+    background: var(--bg-tertiary);
+    color: var(--accent-primary);
+}
+
 .editor-pane {
     flex: 1;
     display: flex;
@@ -592,23 +568,20 @@ body {
     padding: 40px;
 }
 
-.editor-container.split-view {
+.panes-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.editor-container.split-view .panes-wrapper {
     flex-direction: row;
 }
 
-.editor-container.split-view .formatting-toolbar {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 10;
-}
-
-.editor-container.split-view .editor-pane,
-.editor-container.split-view .preview-pane {
-    flex: 1;
+.editor-container.split-view .editor-pane {
     border-right: 1px solid var(--border-color);
-    margin-top: 45px; /* Space for toolbar */
 }
 
 .editor-container.split-view .preview-pane {
