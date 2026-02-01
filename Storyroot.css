@@ -351,6 +351,95 @@ body {
     overflow: hidden;
 }
 
+/* Note Tabs Bar */
+.note-tabs-bar {
+    display: flex;
+    align-items: center;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    overflow-x: auto;
+    overflow-y: hidden;
+    min-height: 36px;
+    max-height: 36px;
+}
+
+.note-tabs-bar::-webkit-scrollbar {
+    height: 0;
+}
+
+.note-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    height: 36px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    position: relative;
+    flex-shrink: 0;
+    max-width: 200px;
+}
+
+.note-tab:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.note-tab.active {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.note-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent-primary);
+}
+
+.note-tab-icon {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.note-tab-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.note-tab-close {
+    padding: 2px;
+    border-radius: 3px;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+}
+
+.note-tab:hover .note-tab-close {
+    opacity: 0.6;
+}
+
+.note-tab-close:hover {
+    opacity: 1;
+    background: var(--bg-tertiary);
+}
+
 .editor-header {
     height: var(--header-height);
     background: var(--bg-secondary);
@@ -432,45 +521,49 @@ body {
 .formatting-toolbar {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 8px 12px;
-    background: var(--bg-secondary);
+    gap: 2px;
+    padding: 6px 10px;
+    background: var(--bg-primary);
     border-bottom: 1px solid var(--border-color);
     overflow-x: auto;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
 }
 
 .toolbar-btn {
-    padding: 6px 10px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    color: var(--text-primary);
+    padding: 5px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    color: var(--text-secondary);
     cursor: pointer;
-    font-size: 13px;
-    transition: all 0.2s;
+    font-size: 14px;
+    transition: all 0.15s ease;
     white-space: nowrap;
-    min-width: 32px;
+    min-width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
 }
 
 .toolbar-btn:hover {
     background: var(--bg-hover);
-    border-color: var(--accent-primary);
+    color: var(--text-primary);
 }
 
 .toolbar-btn:active {
-    background: var(--accent-primary);
-    color: white;
+    background: var(--bg-tertiary);
+    color: var(--accent-primary);
+    transform: scale(0.95);
 }
 
 .toolbar-separator {
     width: 1px;
-    height: 24px;
+    height: 18px;
     background: var(--border-color);
-    margin: 0 4px;
+    margin: 0 6px;
+    opacity: 0.5;
 }
 
 .editor-pane {

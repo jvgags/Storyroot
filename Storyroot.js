@@ -13,6 +13,7 @@ let settings = {
 };
 
 let currentNoteId = null;
+let openTabs = []; // Array of note IDs that are open in tabs
 let currentEditMode = 'edit'; // 'edit', 'preview', 'split'
 let autoSaveTimer = null;
 let hasUnsavedChanges = false;
@@ -343,6 +344,12 @@ function openNote(noteId) {
     const note = notes.find(n => n.id === noteId);
     if (!note) return;
 
+    // Add to tabs if not already open
+    if (!openTabs.includes(noteId)) {
+        openTabs.push(noteId);
+        renderTabs();
+    }
+    
     currentNoteId = noteId;
     hasUnsavedChanges = false;
     
@@ -356,10 +363,86 @@ function openNote(noteId) {
     updatePreview();
     updateRightSidebar(note);
     updateActiveNote();
+    renderTabs(); // Update tab highlighting
     
     // Save last opened note
     settings.lastOpenedNote = noteId;
     saveSettings();
+}
+
+function renderTabs() {
+    const tabsBar = document.getElementById('noteTabsBar');
+    if (!tabsBar) return;
+    
+    tabsBar.innerHTML = '';
+    
+    openTabs.forEach(noteId => {
+        const note = notes.find(n => n.id === noteId);
+        if (!note) return;
+        
+        const tab = document.createElement('div');
+        tab.className = 'note-tab';
+        if (noteId === currentNoteId) {
+            tab.classList.add('active');
+        }
+        
+        tab.innerHTML = `
+            <span class="note-tab-icon">📄</span>
+            <span class="note-tab-title">${escapeHtml(note.title)}</span>
+            <span class="note-tab-close" onclick="closeTab('${noteId}', event)">×</span>
+        `;
+        
+        tab.onclick = (e) => {
+            if (!e.target.classList.contains('note-tab-close')) {
+                switchToTab(noteId);
+            }
+        };
+        
+        tabsBar.appendChild(tab);
+    });
+}
+
+function switchToTab(noteId) {
+    if (currentNoteId === noteId) return;
+    
+    // Save current note before switching
+    if (currentNoteId && settings.autoSave) {
+        saveCurrentNote();
+    }
+    
+    openNote(noteId);
+}
+
+function closeTab(noteId, event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    // Save note before closing if needed
+    if (noteId === currentNoteId && settings.autoSave && hasUnsavedChanges) {
+        saveCurrentNote();
+    }
+    
+    // Remove from open tabs
+    const tabIndex = openTabs.indexOf(noteId);
+    if (tabIndex === -1) return;
+    
+    openTabs.splice(tabIndex, 1);
+    
+    // If this was the current note, switch to another tab or show empty state
+    if (noteId === currentNoteId) {
+        if (openTabs.length > 0) {
+            // Switch to the previous tab, or the next one if we closed the first tab
+            const newIndex = Math.max(0, tabIndex - 1);
+            openNote(openTabs[newIndex]);
+        } else {
+            currentNoteId = null;
+            document.getElementById('markdownEditor').value = '';
+            showEmptyState();
+        }
+    }
+    
+    renderTabs();
 }
 
 async function saveCurrentNote() {
@@ -425,10 +508,10 @@ async function confirmDelete() {
         await deleteNote(deleteTarget.id);
         notes = notes.filter(n => n.id !== deleteTarget.id);
         
-        if (currentNoteId === deleteTarget.id) {
-            currentNoteId = null;
-            document.getElementById('markdownEditor').value = '';
-            showEmptyState();
+        // Close the tab for this note
+        const tabIndex = openTabs.indexOf(deleteTarget.id);
+        if (tabIndex !== -1) {
+            closeTab(deleteTarget.id);
         }
         
         renderFileExplorer();
@@ -442,6 +525,11 @@ async function confirmDelete() {
         const notesToDelete = notes.filter(n => foldersToDelete.includes(n.folderId));
         for (const note of notesToDelete) {
             await deleteNote(note.id);
+            // Close tabs for deleted notes
+            const tabIndex = openTabs.indexOf(note.id);
+            if (tabIndex !== -1) {
+                openTabs.splice(tabIndex, 1);
+            }
         }
         notes = notes.filter(n => !foldersToDelete.includes(n.folderId));
         
@@ -451,6 +539,18 @@ async function confirmDelete() {
         }
         folders = folders.filter(f => !foldersToDelete.includes(f.id));
         
+        // Update UI if current note was deleted
+        if (currentNoteId && !notes.find(n => n.id === currentNoteId)) {
+            if (openTabs.length > 0) {
+                openNote(openTabs[0]);
+            } else {
+                currentNoteId = null;
+                document.getElementById('markdownEditor').value = '';
+                showEmptyState();
+            }
+        }
+        
+        renderTabs();
         renderFileExplorer();
         showToast('Folder deleted');
     }
@@ -1210,6 +1310,11 @@ async function confirmRename() {
             if (currentNoteId === note.id) {
                 updateBreadcrumb(note);
             }
+            
+            // Update tab if note is open
+            if (openTabs.includes(note.id)) {
+                renderTabs();
+            }
         }
     } else if (renameTarget.type === 'folder') {
         const folder = folders.find(f => f.id === renameTarget.id);
@@ -1292,6 +1397,14 @@ function resetAutoSaveTimer() {
             saveCurrentNote();
         }
     }, 3000); // Auto-save after 3 seconds of inactivity
+}
+
+/* ========== UTILITY FUNCTIONS ========== */
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Handle modal clicks
