@@ -306,11 +306,8 @@ function initializeCodeMirror() {
 }
 
 function getCodeMirrorTheme() {
-    if (settings.theme === 'dark') {
-        return 'material';
-    } else if (settings.theme === 'obsidian') {
-        return 'monokai';
-    }
+    // Always use 'default' theme so our CSS variables control the colors
+    // This ensures consistent theming across all theme options
     return 'default';
 }
 
@@ -1196,6 +1193,13 @@ function changeTheme() {
     const theme = document.getElementById('themeSelect').value;
     settings.theme = theme;
     document.documentElement.setAttribute('data-theme', theme);
+    
+    // Update CodeMirror theme and refresh to apply theme colors
+    if (editor) {
+        editor.setOption('theme', getCodeMirrorTheme());
+        editor.refresh();
+    }
+    
     saveSettings();
     showToast('Theme changed');
 }
