@@ -555,48 +555,75 @@ body {
     flex-direction: column;
     position: relative;
     background: var(--bg-primary);
+    overflow: hidden;
+    min-height: 0;
 }
 
 #markdownEditor {
     flex: 1;
     width: 100%;
-    padding: 20px;
-    background: var(--bg-primary);
-    border: none;
-    color: var(--text-primary);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* CodeMirror 5 theming */
+.CodeMirror {
+    height: 100% !important;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 16px;
-    line-height: 1.6;
-    resize: none;
-    outline: none;
-    overflow-y: auto;
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
-#markdownEditor:empty:before {
-    content: attr(placeholder);
-    color: var(--text-tertiary);
-    pointer-events: none;
+.CodeMirror-scroll {
+    padding: 20px;
 }
 
-#markdownEditor::selection {
-    background: var(--accent-primary);
-    color: white;
+/* Make headers bold in CodeMirror */
+.cm-header {
+    font-weight: bold;
 }
 
-#markdownEditor::-moz-selection {
-    background: var(--accent-primary);
-    color: white;
+.cm-header-1 { font-weight: bold; font-size: 1.6em; }
+.cm-header-2 { font-weight: bold; font-size: 1.4em; }
+.cm-header-3 { font-weight: bold; font-size: 1.2em; }
+.cm-header-4 { font-weight: bold; font-size: 1.1em; }
+.cm-header-5 { font-weight: bold; }
+.cm-header-6 { font-weight: bold; }
+
+/* Theme integration */
+.CodeMirror-gutters {
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
 }
-    z-index: 2;
+
+.CodeMirror-cursor {
+    border-left-color: var(--text-primary);
+}
+
+.CodeMirror-selected {
+    background: var(--accent-primary) !important;
+    opacity: 0.3;
+}
+
+/* Dark theme for CodeMirror */
+[data-theme="dark"] .CodeMirror,
+[data-theme="obsidian"] .CodeMirror {
+    background: var(--bg-primary);
+    color: var(--text-primary);
 }
 
 .preview-pane {
     flex: 1;
     overflow-y: auto;
     padding: 10px;
+    min-height: 0;
 }
 
 .panes-wrapper {

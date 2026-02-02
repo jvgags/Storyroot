@@ -17,6 +17,7 @@ let openTabs = []; // Array of note IDs that are open in tabs
 let currentEditMode = 'edit'; // 'edit', 'preview', 'split'
 let autoSaveTimer = null;
 let hasUnsavedChanges = false;
+let editor = null; // CodeMirror instance
 
 // IndexedDB Setup
 const DB_NAME = 'StoryrootDB';
@@ -185,14 +186,10 @@ window.onload = async function() {
         if (fontFamilySelect) fontFamilySelect.value = settings.fontFamily;
     }
 
-    // Apply saved font size
+    // Apply saved font size (will be applied to CodeMirror after initialization)
     if (settings.fontSize) {
-        const editor = document.getElementById('markdownEditor');
         const preview = document.getElementById('markdownPreview');
-        const highlights = document.getElementById('editorHighlights');
-        editor.style.fontSize = settings.fontSize + 'px';
         preview.style.fontSize = settings.fontSize + 'px';
-        if (highlights) highlights.style.fontSize = settings.fontSize + 'px';
         
         const fontSizeRange = document.getElementById('fontSizeRange');
         const fontSizeValue = document.getElementById('fontSizeValue');
@@ -208,29 +205,8 @@ window.onload = async function() {
     const vimModeCheckbox = document.getElementById('vimModeCheckbox');
     if (vimModeCheckbox) vimModeCheckbox.checked = settings.vimMode;
 
-    // Setup event listeners
-    const editor = document.getElementById('markdownEditor');
-    
-    // Handle input events for contenteditable
-    editor.addEventListener('input', () => {
-        hasUnsavedChanges = true;
-        if (currentNoteId) {
-            updatePreview();
-            // DON'T call styleEditorHeaders here - it causes cursor issues
-            resetAutoSaveTimer();
-        }
-    });
-    
-    //Handle keyboard events
-    editor.addEventListener('keydown', (e) => {
-        // Re-style only on Enter key (new line)
-        if (e.key === 'Enter') {
-            setTimeout(() => styleEditorHeaders(), 0);
-        }
-    });
-    
-    // Style headers on load
-    styleEditorHeaders();
+    // Initialize CodeMirror
+    initializeCodeMirror();
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
@@ -296,6 +272,48 @@ window.onload = async function() {
     }
 };
 
+/* ========== CODEMIRROR INITIALIZATION ========== */
+
+function initializeCodeMirror() {
+    const editorElement = document.getElementById('markdownEditor');
+    
+    // Create CodeMirror editor
+    editor = CodeMirror(editorElement, {
+        mode: 'markdown',
+        lineNumbers: false,
+        lineWrapping: true,
+        theme: getCodeMirrorTheme(),
+        autofocus: false,
+        spellcheck: true,
+        autocorrect: true,
+        // Make headers bold with custom styling
+        configureMouse: () => ({ addNew: false })
+    });
+    
+    // Set initial font size
+    if (settings.fontSize) {
+        editor.getWrapperElement().style.fontSize = settings.fontSize + 'px';
+    }
+    
+    // Listen for changes
+    editor.on('change', () => {
+        hasUnsavedChanges = true;
+        if (currentNoteId) {
+            updatePreview();
+            resetAutoSaveTimer();
+        }
+    });
+}
+
+function getCodeMirrorTheme() {
+    if (settings.theme === 'dark') {
+        return 'material';
+    } else if (settings.theme === 'obsidian') {
+        return 'monokai';
+    }
+    return 'default';
+}
+
 /* ========== NOTE MANAGEMENT ========== */
 
 function createNewNote() {
@@ -360,8 +378,12 @@ function createNoteInFolder(folderId) {
 }
 
 function openNote(noteId) {
+    console.log('openNote called with noteId:', noteId);
     const note = notes.find(n => n.id === noteId);
-    if (!note) return;
+    if (!note) {
+        console.error('Note not found:', noteId);
+        return;
+    }
 
     // Add to tabs if not already open
     if (!openTabs.includes(noteId)) {
@@ -372,16 +394,22 @@ function openNote(noteId) {
     currentNoteId = noteId;
     hasUnsavedChanges = false;
     
-    // Update editor
-    const editor = document.getElementById('markdownEditor');
-    editor.textContent = note.content || '';
+    // Update CodeMirror editor
+    if (editor) {
+        editor.setValue(note.content || '');
+    }
+    
+    // Always extract fresh tags and links from content for sidebar display
+    note.tags = extractTags(note.content || '');
+    note.links = extractLinks(note.content || '');
     
     // Update UI
     hideEmptyState();
     updateBreadcrumb(note);
     updatePreview();
-    styleEditorHeaders();
+    console.log('About to call updateRightSidebar with tags:', note.tags, 'links:', note.links);
     updateRightSidebar(note);
+    console.log('updateRightSidebar called');
     updateActiveNote();
     renderTabs(); // Update tab highlighting
     
@@ -409,9 +437,17 @@ function renderTabs() {
         tab.innerHTML = `
             <span class="note-tab-icon">📄</span>
             <span class="note-tab-title">${escapeHtml(note.title)}</span>
-            <span class="note-tab-close" onclick="closeTab('${noteId}', event)">×</span>
+            <span class="note-tab-close">×</span>
         `;
         
+        // Handle close button click
+        const closeBtn = tab.querySelector('.note-tab-close');
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            closeTab(noteId, e);
+        };
+        
+        // Handle tab click (switch to this note)
         tab.onclick = (e) => {
             if (!e.target.classList.contains('note-tab-close')) {
                 switchToTab(noteId);
@@ -423,11 +459,16 @@ function renderTabs() {
 }
 
 function switchToTab(noteId) {
-    if (currentNoteId === noteId) return;
+    console.log('switchToTab called with noteId:', noteId, 'currentNoteId:', currentNoteId);
     
-    // Save current note before switching
+    if (currentNoteId === noteId) {
+        console.log('Already on this tab, skipping');
+        return;
+    }
+    
+    // Save current note before switching (but don't update sidebar yet)
     if (currentNoteId && settings.autoSave) {
-        saveCurrentNote();
+        saveCurrentNote(true); // Pass true to skip sidebar update
     }
     
     openNote(noteId);
@@ -457,7 +498,7 @@ function closeTab(noteId, event) {
             openNote(openTabs[newIndex]);
         } else {
             currentNoteId = null;
-            document.getElementById('markdownEditor').textContent = '';
+            if (editor) { editor.setValue(''); };
             showEmptyState();
         }
     }
@@ -465,7 +506,7 @@ function closeTab(noteId, event) {
     renderTabs();
 }
 
-async function saveCurrentNote() {
+async function saveCurrentNote(skipSidebarUpdate = false) {
     if (!currentNoteId) return;
     
     const note = notes.find(n => n.id === currentNoteId);
@@ -482,8 +523,10 @@ async function saveCurrentNote() {
     await saveNote(note);
     hasUnsavedChanges = false;
     
-    // Update UI
-    updateRightSidebar(note);
+    // Update UI (skip sidebar update if switching tabs)
+    if (!skipSidebarUpdate) {
+        updateRightSidebar(note);
+    }
     renderFileExplorer();
     
     showToast('Note saved');
@@ -565,7 +608,7 @@ async function confirmDelete() {
                 openNote(openTabs[0]);
             } else {
                 currentNoteId = null;
-                document.getElementById('markdownEditor').textContent = '';
+                if (editor) { editor.setValue(''); };
                 showEmptyState();
             }
         }
@@ -738,74 +781,8 @@ function updatePreview() {
 /* ========== EDITOR SYNTAX HIGHLIGHTING ========== */
 
 function getEditorPlainText() {
-    const editor = document.getElementById('markdownEditor');
     if (!editor) return '';
-    
-    // Get plain text from the div structure
-    // Each line is wrapped in a div, so we need to join them with newlines
-    const divs = editor.querySelectorAll('div');
-    if (divs.length > 0) {
-        return Array.from(divs).map(div => div.textContent).join('\n');
-    }
-    
-    // Fallback to textContent
-    return editor.textContent || '';
-}
-
-function styleEditorHeaders() {
-    const editor = document.getElementById('markdownEditor');
-    if (!editor) return;
-    
-    // Don't re-style if we're in the middle of typing
-    // This prevents cursor jumping
-    const text = getEditorPlainText();
-    
-    // Apply CSS-based styling by analyzing each line
-    // We'll use a simple approach: wrap the content in divs with inline styles
-    const lines = text.split('\n');
-    
-    // Store selection before modifying
-    const selection = window.getSelection();
-    let savedSelection = null;
-    if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        savedSelection = {
-            startContainer: range.startContainer,
-            startOffset: range.startOffset,
-            endContainer: range.endContainer,
-            endOffset: range.endOffset
-        };
-    }
-    
-    // Build new HTML with styled lines
-    const newHTML = lines.map((line, index) => {
-        const headerMatch = line.match(/^(#{1,6})\s+/);
-        if (headerMatch) {
-            return `<div style="font-weight: bold;">${escapeHtml(line)}</div>`;
-        }
-        return `<div>${escapeHtml(line) || '<br>'}</div>`;
-    }).join('');
-    
-    // Only update if content structure changed
-    const currentText = getEditorPlainText();
-    if (currentText !== text || editor.children.length !== lines.length) {
-        editor.innerHTML = newHTML;
-        
-        // Restore selection if possible
-        if (savedSelection) {
-            try {
-                const newRange = document.createRange();
-                const newSelection = window.getSelection();
-                // This is a simplified restoration - for production you'd want more robust handling
-                newRange.setStart(editor.firstChild || editor, 0);
-                newRange.collapse(true);
-                newSelection.removeAllRanges();
-                newSelection.addRange(newRange);
-            } catch (e) {
-                // Selection restoration failed, ignore
-            }
-        }
-    }
+    return editor.getValue();
 }
 
 /* ========== UI RENDERING ========== */
@@ -971,112 +948,145 @@ function updateBreadcrumb(note) {
 }
 
 function updateRightSidebar(note) {
+    console.log('=== updateRightSidebar called ===');
+    console.log('Note title:', note.title);
+    console.log('Note tags:', note.tags);
+    console.log('Note links:', note.links);
+    console.log('Note content length:', note.content?.length || 0);
+    
     // Update metadata
-    document.getElementById('createdDate').textContent = formatDate(note.created);
-    document.getElementById('modifiedDate').textContent = formatDate(note.modified);
-    document.getElementById('wordCount').textContent = countWords(note.content);
+    const createdDateEl = document.getElementById('createdDate');
+    const modifiedDateEl = document.getElementById('modifiedDate');
+    const wordCountEl = document.getElementById('wordCount');
+    
+    console.log('Metadata elements found:', {
+        createdDate: !!createdDateEl,
+        modifiedDate: !!modifiedDateEl,
+        wordCount: !!wordCountEl
+    });
+    
+    if (createdDateEl) createdDateEl.textContent = formatDate(note.created);
+    if (modifiedDateEl) modifiedDateEl.textContent = formatDate(note.modified);
+    if (wordCountEl) wordCountEl.textContent = countWords(note.content);
     
     // Update table of contents
     updateTableOfContents(note);
     
     // Update tags
     const tagsContainer = document.getElementById('noteTags');
-    if (note.tags && note.tags.length > 0) {
-        tagsContainer.innerHTML = note.tags.map(tag => 
-            `<div class="tag-item" onclick="searchByTag('${tag}')">#${tag}</div>`
-        ).join('');
-    } else {
-        tagsContainer.innerHTML = '<span class="empty-message">No tags</span>';
+    console.log('Tags container found:', !!tagsContainer);
+    if (tagsContainer) {
+        if (note.tags && note.tags.length > 0) {
+            console.log('Setting tags HTML for', note.tags.length, 'tags');
+            tagsContainer.innerHTML = note.tags.map(tag => 
+                `<div class="tag-item" onclick="searchByTag('${tag}')">#${tag}</div>`
+            ).join('');
+        } else {
+            console.log('No tags, showing empty message');
+            tagsContainer.innerHTML = '<span class="empty-message">No tags</span>';
+        }
     }
     
     // Update outgoing links
     const linksContainer = document.getElementById('outgoingLinks');
-    if (note.links && note.links.length > 0) {
-        linksContainer.innerHTML = note.links.map(link => {
-            const linkedNote = notes.find(n => 
-                n.title.toLowerCase() === link.toLowerCase()
-            );
-            const className = linkedNote ? 'link-item' : 'link-item broken';
-            const onclick = linkedNote ? `onclick="openNote('${linkedNote.id}')"` : '';
-            return `<div class="${className}" ${onclick}>[[${link}]]</div>`;
-        }).join('');
-    } else {
-        linksContainer.innerHTML = '<span class="empty-message">No links</span>';
+    console.log('Links container found:', !!linksContainer);
+    if (linksContainer) {
+        if (note.links && note.links.length > 0) {
+            console.log('Setting links HTML for', note.links.length, 'links');
+            linksContainer.innerHTML = note.links.map(link => {
+                const linkedNote = notes.find(n => 
+                    n.title.toLowerCase() === link.toLowerCase()
+                );
+                const className = linkedNote ? 'link-item' : 'link-item broken';
+                const onclick = linkedNote ? `onclick="openNote('${linkedNote.id}')"` : '';
+                return `<div class="${className}" ${onclick}>[[${link}]]</div>`;
+            }).join('');
+        } else {
+            console.log('No links, showing empty message');
+            linksContainer.innerHTML = '<span class="empty-message">No links</span>';
+        }
     }
     
     // Update backlinks
     const backlinksContainer = document.getElementById('backlinks');
+    console.log('Backlinks container found:', !!backlinksContainer);
     const backlinks = notes.filter(n => 
         n.links && n.links.some(link => 
             link.toLowerCase() === note.title.toLowerCase()
         )
     );
     
-    if (backlinks.length > 0) {
-        backlinksContainer.innerHTML = backlinks.map(n => 
-            `<div class="link-item" onclick="openNote('${n.id}')">${n.title}</div>`
-        ).join('');
-    } else {
+    console.log('Found', backlinks.length, 'backlinks');
+    
+    if (backlinksContainer) {
+        if (backlinks.length > 0) {
+            backlinksContainer.innerHTML = backlinks.map(n => 
+                `<div class="link-item" onclick="openNote('${n.id}')">${n.title}</div>`
+            ).join('');
+        } else {
+            backlinksContainer.innerHTML = '<span class="empty-message">No backlinks</span>';
+        }
+    }
+     else {
         backlinksContainer.innerHTML = '<span class="empty-message">No backlinks</span>';
     }
+    
+    console.log('=== updateRightSidebar complete ===');
 }
-
+ 
 /* ========== EDITOR MODES ========== */
 
 function insertFormatting(type) {
-    const editor = document.getElementById('markdownEditor');
-    editor.focus();
+    if (!editor) return;
     
-    const selection = window.getSelection();
-    if (!selection.rangeCount) return;
-    
-    const range = selection.getRangeAt(0);
-    const selectedText = range.toString();
+    const doc = editor.getDoc();
+    const cursor = doc.getCursor();
+    const selection = doc.getSelection();
     
     let newText = '';
     
     switch(type) {
         case 'bold':
-            newText = `**${selectedText || 'bold text'}**`;
+            newText = `**${selection || 'bold text'}**`;
             break;
         case 'italic':
-            newText = `*${selectedText || 'italic text'}*`;
+            newText = `*${selection || 'italic text'}*`;
             break;
         case 'strikethrough':
-            newText = `~~${selectedText || 'strikethrough text'}~~`;
+            newText = `~~${selection || 'strikethrough text'}~~`;
             break;
         case 'h1':
-            newText = `# ${selectedText || 'Heading 1'}`;
+            newText = `# ${selection || 'Heading 1'}`;
             break;
         case 'h2':
-            newText = `## ${selectedText || 'Heading 2'}`;
+            newText = `## ${selection || 'Heading 2'}`;
             break;
         case 'h3':
-            newText = `### ${selectedText || 'Heading 3'}`;
+            newText = `### ${selection || 'Heading 3'}`;
             break;
         case 'link':
-            newText = `[${selectedText || 'link text'}](url)`;
+            newText = `[${selection || 'link text'}](url)`;
             break;
         case 'wikilink':
-            newText = `[[${selectedText || 'Note Name'}]]`;
+            newText = `[[${selection || 'Note Name'}]]`;
             break;
         case 'code':
-            newText = `\`${selectedText || 'code'}\``;
+            newText = `\`${selection || 'code'}\``;
             break;
         case 'codeblock':
-            newText = `\`\`\`\n${selectedText || 'code'}\n\`\`\``;
+            newText = `\`\`\`\n${selection || 'code'}\n\`\`\``;
             break;
         case 'quote':
-            newText = `> ${selectedText || 'quote'}`;
+            newText = `> ${selection || 'quote'}`;
             break;
         case 'ul':
-            newText = `- ${selectedText || 'list item'}`;
+            newText = `- ${selection || 'list item'}`;
             break;
         case 'ol':
-            newText = `1. ${selectedText || 'list item'}`;
+            newText = `1. ${selection || 'list item'}`;
             break;
         case 'task':
-            newText = `- [ ] ${selectedText || 'task'}`;
+            newText = `- [ ] ${selection || 'task'}`;
             break;
         case 'hr':
             newText = '\n---\n';
@@ -1086,16 +1096,11 @@ function insertFormatting(type) {
             break;
     }
     
-    // Insert the text
-    range.deleteContents();
-    const textNode = document.createTextNode(newText);
-    range.insertNode(textNode);
+    // Replace selection with formatted text
+    doc.replaceSelection(newText);
     
-    // Move cursor to end of inserted text
-    range.setStartAfter(textNode);
-    range.setEndAfter(textNode);
-    selection.removeAllRanges();
-    selection.addRange(range);
+    // Focus the editor
+    editor.focus();
     
     // Trigger change event for auto-save
     hasUnsavedChanges = true;
@@ -1204,9 +1209,7 @@ function changeFontFamily() {
 }
 
 function applyFontFamily(fontFamily) {
-    const editor = document.getElementById('markdownEditor');
     const preview = document.getElementById('markdownPreview');
-    const highlights = document.getElementById('editorHighlights');
     
     let fontStack;
     switch(fontFamily) {
@@ -1247,9 +1250,12 @@ function applyFontFamily(fontFamily) {
             fontStack = "'Consolas', 'Monaco', 'Courier New', monospace";
     }
     
-    editor.style.fontFamily = fontStack;
+    // Apply to CodeMirror
+    if (editor) {
+        editor.getWrapperElement().style.fontFamily = fontStack;
+    }
+    
     preview.style.fontFamily = fontStack;
-    if (highlights) highlights.style.fontFamily = fontStack;
 }
 
 function changeFontSize(size) {
@@ -1258,10 +1264,14 @@ function changeFontSize(size) {
     }
     settings.fontSize = parseInt(size);
     document.getElementById('fontSizeValue').textContent = size + 'px';
-    document.getElementById('markdownEditor').style.fontSize = size + 'px';
     document.getElementById('markdownPreview').style.fontSize = size + 'px';
-    const highlights = document.getElementById('editorHighlights');
-    if (highlights) highlights.style.fontSize = size + 'px';
+    
+    // Apply to CodeMirror
+    if (editor) {
+        editor.getWrapperElement().style.fontSize = size + 'px';
+        editor.refresh();
+    }
+    
     saveSettings();
 }
 
@@ -1347,7 +1357,7 @@ async function clearAllData() {
     folders = [];
     
     currentNoteId = null;
-    document.getElementById('markdownEditor').textContent = '';
+    if (editor) { editor.setValue(''); };
     
     renderFileExplorer();
     showEmptyState();
@@ -1587,44 +1597,25 @@ function scrollToHeader(headerIndex) {
     }
 }
 
-function scrollToLineInEditor(editor, lineNumber) {
-    const text = getEditorPlainText();
-    const lines = text.split('\n');
+function scrollToLineInEditor(editorInstance, lineNumber) {
+    if (!editor) return;
     
-    // Focus editor first
+    const doc = editor.getDoc();
+    const totalLines = doc.lineCount();
+    
+    // Make sure line number is valid
+    if (lineNumber >= totalLines) return;
+    
+    // Scroll to the line
+    const coords = editor.charCoords({line: lineNumber, ch: 0}, 'local');
+    editor.scrollTo(null, coords.top - editor.getScrollInfo().clientHeight / 3);
+    
+    // Set cursor at the end of the line
+    const lineContent = doc.getLine(lineNumber);
+    doc.setCursor({line: lineNumber, ch: lineContent.length});
+    
+    // Focus the editor
     editor.focus();
-    
-    // Find the div element for this line (since we wrap each line in a div)
-    const divs = editor.querySelectorAll('div');
-    if (divs[lineNumber]) {
-        // Scroll the target div into view
-        divs[lineNumber].scrollIntoView({ behavior: 'smooth', block: 'center' });
-        
-        // Highlight temporarily
-        divs[lineNumber].style.background = 'var(--accent-primary)';
-        divs[lineNumber].style.color = 'white';
-        divs[lineNumber].style.padding = '2px 4px';
-        divs[lineNumber].style.borderRadius = '3px';
-        divs[lineNumber].style.transition = 'all 0.3s';
-        
-        // Place cursor at the end of the line
-        const range = document.createRange();
-        const selection = window.getSelection();
-        
-        // Get the last text node in the div
-        const lastNode = divs[lineNumber].lastChild || divs[lineNumber];
-        range.setStart(lastNode, lastNode.textContent ? lastNode.textContent.length : 0);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        
-        // Remove highlight after a moment
-        setTimeout(() => {
-            divs[lineNumber].style.background = '';
-            divs[lineNumber].style.color = '';
-            divs[lineNumber].style.padding = '';
-        }, 1000);
-    }
 }
 
 /* ========== UTILITY FUNCTIONS ========== */
@@ -1650,3 +1641,40 @@ document.addEventListener('keydown', (e) => {
         confirmRename();
     }
 });
+
+// Export functions to window for onclick handlers
+window.createNewNote = createNewNote;
+window.createNewFolder = createNewFolder;
+window.openSettingsModal = openSettingsModal;
+window.closeSettingsModal = closeSettingsModal;
+window.exportVault = exportVault;
+window.importVault = importVault;
+window.clearAllData = clearAllData;
+window.searchNotes = searchNotes;
+window.toggleLeftSidebar = toggleLeftSidebar;
+window.toggleRightSidebar = toggleRightSidebar;
+window.openNote = openNote;
+window.closeTab = closeTab;
+window.saveCurrentNote = saveCurrentNote;
+window.deleteNoteById = deleteNoteById;
+window.duplicateNote = duplicateNote;
+window.createSubfolder = createSubfolder;
+window.createNoteInFolder = createNoteInFolder;
+window.toggleFolder = toggleFolder;
+window.deleteFolderById = deleteFolderById;
+window.renameItem = renameItem;
+window.openRenameModal = openRenameModal;
+window.closeRenameModal = closeRenameModal;
+window.confirmRename = confirmRename;
+window.openDeleteModal = openDeleteModal;
+window.closeDeleteModal = closeDeleteModal;
+window.confirmDelete = confirmDelete;
+window.insertFormatting = insertFormatting;
+window.switchEditorTab = switchEditorTab;
+window.toggleEditMode = toggleEditMode;
+window.changeTheme = changeTheme;
+window.changeFontFamily = changeFontFamily;
+window.changeFontSize = changeFontSize;
+window.toggleAutoSave = toggleAutoSave;
+window.toggleVimMode = toggleVimMode;
+window.searchByTag = searchByTag;
