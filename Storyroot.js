@@ -189,8 +189,10 @@ window.onload = async function() {
     if (settings.fontSize) {
         const editor = document.getElementById('markdownEditor');
         const preview = document.getElementById('markdownPreview');
+        const highlights = document.getElementById('editorHighlights');
         editor.style.fontSize = settings.fontSize + 'px';
         preview.style.fontSize = settings.fontSize + 'px';
+        if (highlights) highlights.style.fontSize = settings.fontSize + 'px';
         
         const fontSizeRange = document.getElementById('fontSizeRange');
         const fontSizeValue = document.getElementById('fontSizeValue');
@@ -208,13 +210,27 @@ window.onload = async function() {
 
     // Setup event listeners
     const editor = document.getElementById('markdownEditor');
+    
+    // Handle input events for contenteditable
     editor.addEventListener('input', () => {
         hasUnsavedChanges = true;
         if (currentNoteId) {
             updatePreview();
+            // DON'T call styleEditorHeaders here - it causes cursor issues
             resetAutoSaveTimer();
         }
     });
+    
+    //Handle keyboard events
+    editor.addEventListener('keydown', (e) => {
+        // Re-style only on Enter key (new line)
+        if (e.key === 'Enter') {
+            setTimeout(() => styleEditorHeaders(), 0);
+        }
+    });
+    
+    // Style headers on load
+    styleEditorHeaders();
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
@@ -358,12 +374,13 @@ function openNote(noteId) {
     
     // Update editor
     const editor = document.getElementById('markdownEditor');
-    editor.value = note.content || '';
+    editor.textContent = note.content || '';
     
     // Update UI
     hideEmptyState();
     updateBreadcrumb(note);
     updatePreview();
+    styleEditorHeaders();
     updateRightSidebar(note);
     updateActiveNote();
     renderTabs(); // Update tab highlighting
@@ -440,7 +457,7 @@ function closeTab(noteId, event) {
             openNote(openTabs[newIndex]);
         } else {
             currentNoteId = null;
-            document.getElementById('markdownEditor').value = '';
+            document.getElementById('markdownEditor').textContent = '';
             showEmptyState();
         }
     }
@@ -455,7 +472,7 @@ async function saveCurrentNote() {
     if (!note) return;
     
     const editor = document.getElementById('markdownEditor');
-    note.content = editor.value;
+    note.content = getEditorPlainText();
     note.modified = new Date().toISOString();
     
     // Extract tags and links
@@ -548,7 +565,7 @@ async function confirmDelete() {
                 openNote(openTabs[0]);
             } else {
                 currentNoteId = null;
-                document.getElementById('markdownEditor').value = '';
+                document.getElementById('markdownEditor').textContent = '';
                 showEmptyState();
             }
         }
@@ -687,7 +704,7 @@ function updatePreview() {
     const editor = document.getElementById('markdownEditor');
     const preview = document.getElementById('markdownPreview');
     
-    let content = editor.value;
+    let content = getEditorPlainText();
     
     // Process wiki links [[Note Name]]
     content = content.replace(/\[\[([^\]]+)\]\]/g, (match, linkText) => {
@@ -713,7 +730,80 @@ function updatePreview() {
         const note = notes.find(n => n.id === currentNoteId);
         if (note) {
             // Create a temporary note object with current content for TOC update
-            updateTableOfContents({ ...note, content: editor.value });
+            updateTableOfContents({ ...note, content: getEditorPlainText() });
+        }
+    }
+}
+
+/* ========== EDITOR SYNTAX HIGHLIGHTING ========== */
+
+function getEditorPlainText() {
+    const editor = document.getElementById('markdownEditor');
+    if (!editor) return '';
+    
+    // Get plain text from the div structure
+    // Each line is wrapped in a div, so we need to join them with newlines
+    const divs = editor.querySelectorAll('div');
+    if (divs.length > 0) {
+        return Array.from(divs).map(div => div.textContent).join('\n');
+    }
+    
+    // Fallback to textContent
+    return editor.textContent || '';
+}
+
+function styleEditorHeaders() {
+    const editor = document.getElementById('markdownEditor');
+    if (!editor) return;
+    
+    // Don't re-style if we're in the middle of typing
+    // This prevents cursor jumping
+    const text = getEditorPlainText();
+    
+    // Apply CSS-based styling by analyzing each line
+    // We'll use a simple approach: wrap the content in divs with inline styles
+    const lines = text.split('\n');
+    
+    // Store selection before modifying
+    const selection = window.getSelection();
+    let savedSelection = null;
+    if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        savedSelection = {
+            startContainer: range.startContainer,
+            startOffset: range.startOffset,
+            endContainer: range.endContainer,
+            endOffset: range.endOffset
+        };
+    }
+    
+    // Build new HTML with styled lines
+    const newHTML = lines.map((line, index) => {
+        const headerMatch = line.match(/^(#{1,6})\s+/);
+        if (headerMatch) {
+            return `<div style="font-weight: bold;">${escapeHtml(line)}</div>`;
+        }
+        return `<div>${escapeHtml(line) || '<br>'}</div>`;
+    }).join('');
+    
+    // Only update if content structure changed
+    const currentText = getEditorPlainText();
+    if (currentText !== text || editor.children.length !== lines.length) {
+        editor.innerHTML = newHTML;
+        
+        // Restore selection if possible
+        if (savedSelection) {
+            try {
+                const newRange = document.createRange();
+                const newSelection = window.getSelection();
+                // This is a simplified restoration - for production you'd want more robust handling
+                newRange.setStart(editor.firstChild || editor, 0);
+                newRange.collapse(true);
+                newSelection.removeAllRanges();
+                newSelection.addRange(newRange);
+            } catch (e) {
+                // Selection restoration failed, ignore
+            }
         }
     }
 }
@@ -935,91 +1025,77 @@ function updateRightSidebar(note) {
 
 function insertFormatting(type) {
     const editor = document.getElementById('markdownEditor');
-    const start = editor.selectionStart;
-    const end = editor.selectionEnd;
-    const selectedText = editor.value.substring(start, end);
-    const beforeText = editor.value.substring(0, start);
-    const afterText = editor.value.substring(end);
+    editor.focus();
+    
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+    
+    const range = selection.getRangeAt(0);
+    const selectedText = range.toString();
     
     let newText = '';
-    let cursorOffset = 0;
     
     switch(type) {
         case 'bold':
             newText = `**${selectedText || 'bold text'}**`;
-            cursorOffset = selectedText ? newText.length : 2;
             break;
         case 'italic':
             newText = `*${selectedText || 'italic text'}*`;
-            cursorOffset = selectedText ? newText.length : 1;
             break;
         case 'strikethrough':
             newText = `~~${selectedText || 'strikethrough text'}~~`;
-            cursorOffset = selectedText ? newText.length : 2;
             break;
         case 'h1':
             newText = `# ${selectedText || 'Heading 1'}`;
-            cursorOffset = selectedText ? newText.length : 2;
             break;
         case 'h2':
             newText = `## ${selectedText || 'Heading 2'}`;
-            cursorOffset = selectedText ? newText.length : 3;
             break;
         case 'h3':
             newText = `### ${selectedText || 'Heading 3'}`;
-            cursorOffset = selectedText ? newText.length : 4;
             break;
         case 'link':
             newText = `[${selectedText || 'link text'}](url)`;
-            cursorOffset = selectedText ? newText.length - 4 : 1;
             break;
         case 'wikilink':
             newText = `[[${selectedText || 'Note Name'}]]`;
-            cursorOffset = selectedText ? newText.length : 2;
             break;
         case 'code':
             newText = `\`${selectedText || 'code'}\``;
-            cursorOffset = selectedText ? newText.length : 1;
             break;
         case 'codeblock':
             newText = `\`\`\`\n${selectedText || 'code'}\n\`\`\``;
-            cursorOffset = selectedText ? 4 : 4;
             break;
         case 'quote':
             newText = `> ${selectedText || 'quote'}`;
-            cursorOffset = selectedText ? newText.length : 2;
             break;
         case 'ul':
             newText = `- ${selectedText || 'list item'}`;
-            cursorOffset = selectedText ? newText.length : 2;
             break;
         case 'ol':
             newText = `1. ${selectedText || 'list item'}`;
-            cursorOffset = selectedText ? newText.length : 3;
             break;
         case 'task':
             newText = `- [ ] ${selectedText || 'task'}`;
-            cursorOffset = selectedText ? newText.length : 6;
             break;
         case 'hr':
             newText = '\n---\n';
-            cursorOffset = newText.length;
             break;
         case 'table':
             newText = '\n| Header 1 | Header 2 |\n|----------|----------|\n| Cell 1   | Cell 2   |\n';
-            cursorOffset = 3;
             break;
     }
     
-    editor.value = beforeText + newText + afterText;
-    editor.focus();
+    // Insert the text
+    range.deleteContents();
+    const textNode = document.createTextNode(newText);
+    range.insertNode(textNode);
     
-    // Set cursor position
-    if (selectedText) {
-        editor.setSelectionRange(start + newText.length, start + newText.length);
-    } else {
-        editor.setSelectionRange(start + cursorOffset, start + cursorOffset);
-    }
+    // Move cursor to end of inserted text
+    range.setStartAfter(textNode);
+    range.setEndAfter(textNode);
+    selection.removeAllRanges();
+    selection.addRange(range);
     
     // Trigger change event for auto-save
     hasUnsavedChanges = true;
@@ -1130,6 +1206,7 @@ function changeFontFamily() {
 function applyFontFamily(fontFamily) {
     const editor = document.getElementById('markdownEditor');
     const preview = document.getElementById('markdownPreview');
+    const highlights = document.getElementById('editorHighlights');
     
     let fontStack;
     switch(fontFamily) {
@@ -1172,6 +1249,7 @@ function applyFontFamily(fontFamily) {
     
     editor.style.fontFamily = fontStack;
     preview.style.fontFamily = fontStack;
+    if (highlights) highlights.style.fontFamily = fontStack;
 }
 
 function changeFontSize(size) {
@@ -1182,6 +1260,8 @@ function changeFontSize(size) {
     document.getElementById('fontSizeValue').textContent = size + 'px';
     document.getElementById('markdownEditor').style.fontSize = size + 'px';
     document.getElementById('markdownPreview').style.fontSize = size + 'px';
+    const highlights = document.getElementById('editorHighlights');
+    if (highlights) highlights.style.fontSize = size + 'px';
     saveSettings();
 }
 
@@ -1267,7 +1347,7 @@ async function clearAllData() {
     folders = [];
     
     currentNoteId = null;
-    document.getElementById('markdownEditor').value = '';
+    document.getElementById('markdownEditor').textContent = '';
     
     renderFileExplorer();
     showEmptyState();
@@ -1508,57 +1588,43 @@ function scrollToHeader(headerIndex) {
 }
 
 function scrollToLineInEditor(editor, lineNumber) {
-    const lines = editor.value.split('\n');
-    
-    // Calculate the character position of the line
-    let charPosition = 0;
-    for (let i = 0; i < lineNumber && i < lines.length; i++) {
-        charPosition += lines[i].length + 1; // +1 for newline character
-    }
-    
-    // Get the line text
-    const lineStart = charPosition;
-    const lineEnd = charPosition + (lines[lineNumber] ? lines[lineNumber].length : 0);
+    const text = getEditorPlainText();
+    const lines = text.split('\n');
     
     // Focus editor first
     editor.focus();
     
-    // Set selection to the target line
-    editor.setSelectionRange(lineStart, lineEnd);
-    
-    // Get cursor position in pixels using a temporary div trick
-    const style = window.getComputedStyle(editor);
-    const div = document.createElement('div');
-    div.style.position = 'absolute';
-    div.style.visibility = 'hidden';
-    div.style.whiteSpace = 'pre-wrap';
-    div.style.wordWrap = 'break-word';
-    div.style.font = style.font;
-    div.style.width = editor.clientWidth + 'px';
-    div.style.padding = style.padding;
-    div.style.border = style.border;
-    
-    // Add text up to the target line
-    div.textContent = lines.slice(0, lineNumber).join('\n');
-    document.body.appendChild(div);
-    
-    // Get the height to this point
-    const scrollToPosition = div.offsetHeight;
-    document.body.removeChild(div);
-    
-    // Scroll to position with the line in the upper third
-    const offset = editor.clientHeight / 3;
-    editor.scrollTop = Math.max(0, scrollToPosition - offset);
-    
-    // Keep selection for highlight effect
-    setTimeout(() => {
-        editor.setSelectionRange(lineStart, lineEnd);
-    }, 50);
-    
-    // Clear selection after a moment
-    setTimeout(() => {
-        editor.setSelectionRange(lineEnd, lineEnd);
-    }, 800);
+    // Find the div element for this line (since we wrap each line in a div)
+    const divs = editor.querySelectorAll('div');
+    if (divs[lineNumber]) {
+        // Scroll the target div into view
+        divs[lineNumber].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Highlight temporarily
+        divs[lineNumber].style.background = 'var(--accent-primary)';
+        divs[lineNumber].style.color = 'white';
+        divs[lineNumber].style.padding = '2px 4px';
+        divs[lineNumber].style.borderRadius = '3px';
+        divs[lineNumber].style.transition = 'all 0.3s';
+        
+        // Place cursor at the end of the line
+        const range = document.createRange();
+        const selection = window.getSelection();
+        
+        // Get the last text node in the div
+        const lastNode = divs[lineNumber].lastChild || divs[lineNumber];
+        range.setStart(lastNode, lastNode.textContent ? lastNode.textContent.length : 0);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        // Remove highlight after a moment
+        setTimeout(() => {
+            divs[lineNumber].style.background = '';
+            divs[lineNumber].style.color = '';
+            divs[lineNumber].style.padding = '';
+        }, 1000);
+    }
 }
 
 /* ========== UTILITY FUNCTIONS ========== */
