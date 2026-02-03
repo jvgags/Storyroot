@@ -1221,8 +1221,14 @@ body {
     margin: 0;
 }
 
+.settings-section button,
+.settings-section .file-input-label {
+    margin-top: 10px;
+    width: 100%;
+}
+
 .file-input-label {
-    display: inline-block;
+    display: block;
     padding: 10px 20px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
