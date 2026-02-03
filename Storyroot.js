@@ -188,6 +188,7 @@ window.onload = async function() {
 
     // Apply saved font size (will be applied to CodeMirror after initialization)
     if (settings.fontSize) {
+        document.documentElement.style.setProperty('--editor-font-size', settings.fontSize + 'px');
         const preview = document.getElementById('markdownPreview');
         preview.style.fontSize = settings.fontSize + 'px';
         
@@ -1254,12 +1255,16 @@ function applyFontFamily(fontFamily) {
             fontStack = "'Consolas', 'Monaco', 'Courier New', monospace";
     }
     
-    // Apply to CodeMirror
-    if (editor) {
-        editor.getWrapperElement().style.fontFamily = fontStack;
-    }
+    // Set CSS variable for editor font (applies to CodeMirror)
+    document.documentElement.style.setProperty('--editor-font', fontStack);
     
+    // Apply to preview
     preview.style.fontFamily = fontStack;
+    
+    // Refresh CodeMirror to pick up the new font
+    if (editor) {
+        editor.refresh();
+    }
 }
 
 function changeFontSize(size) {
@@ -1268,11 +1273,15 @@ function changeFontSize(size) {
     }
     settings.fontSize = parseInt(size);
     document.getElementById('fontSizeValue').textContent = size + 'px';
+    
+    // Set CSS variable for editor font size (applies to CodeMirror)
+    document.documentElement.style.setProperty('--editor-font-size', size + 'px');
+    
+    // Apply to preview
     document.getElementById('markdownPreview').style.fontSize = size + 'px';
     
-    // Apply to CodeMirror
+    // Refresh CodeMirror to pick up the new font size
     if (editor) {
-        editor.getWrapperElement().style.fontSize = size + 'px';
         editor.refresh();
     }
     

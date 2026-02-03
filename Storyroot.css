@@ -42,6 +42,9 @@ body {
     --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
     --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
     
+    --editor-font: 'Consolas', 'Monaco', 'Courier New', monospace;
+    --editor-font-size: 16px;
+    
     --sidebar-width: 280px;
     --header-height: 50px;
 }
@@ -572,8 +575,8 @@ body {
 /* CodeMirror 5 theming */
 .CodeMirror {
     height: 100% !important;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 16px;
+    font-family: var(--editor-font) !important;
+    font-size: var(--editor-font-size) !important;
     background: var(--bg-primary) !important;
     color: var(--text-primary) !important;
     flex: 1;
