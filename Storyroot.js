@@ -30,6 +30,7 @@ let db;
 // Modal state
 let renameTarget = null;
 let deleteTarget = null;
+let isCreating = false; // Track if we're creating vs renaming
 
 /* ========== DATABASE FUNCTIONS ========== */
 
@@ -348,6 +349,7 @@ function createNewNote() {
     setTimeout(() => {
         const noteElement = document.querySelector(`[data-note-id="${note.id}"]`);
         if (noteElement) {
+            isCreating = true; // Mark as creation
             renameTarget = { type: 'note', id: note.id };
             openRenameModal(note.title);
         }
@@ -382,6 +384,7 @@ function createNoteInFolder(folderId) {
     setTimeout(() => {
         const noteElement = document.querySelector(`[data-note-id="${note.id}"]`);
         if (noteElement) {
+            isCreating = true; // Mark as creation
             renameTarget = { type: 'note', id: note.id };
             openRenameModal(note.title);
         }
@@ -662,6 +665,7 @@ function createNewFolder() {
     
     // Focus on folder for renaming
     setTimeout(() => {
+        isCreating = true; // Mark as creation
         renameTarget = { type: 'folder', id: folder.id };
         openRenameModal(folder.name);
     }, 100);
@@ -688,6 +692,7 @@ function createSubfolder(parentFolderId) {
     
     // Focus on folder for renaming
     setTimeout(() => {
+        isCreating = true; // Mark as creation
         renameTarget = { type: 'folder', id: folder.id };
         openRenameModal(folder.name);
     }, 100);
@@ -1470,13 +1475,20 @@ function openRenameModal(currentName) {
     const modal = document.getElementById('renameModal');
     const input = document.getElementById('renameInput');
     const confirmBtn = document.getElementById('renameConfirmBtn');
+    const modalTitle = document.getElementById('renameModalTitle');
     
     input.value = currentName;
     
-    // Update button text based on whether we're creating or renaming
-    if (currentName === 'New Folder' || currentName === 'Untitled Note') {
+    // Update title and button text based on whether we're creating or renaming
+    if (isCreating) {
+        if (renameTarget && renameTarget.type === 'folder') {
+            modalTitle.textContent = 'Create Folder';
+        } else {
+            modalTitle.textContent = 'Create Note';
+        }
         confirmBtn.textContent = 'Create';
     } else {
+        modalTitle.textContent = 'Rename';
         confirmBtn.textContent = 'Rename';
     }
     
@@ -1487,6 +1499,7 @@ function openRenameModal(currentName) {
 function closeRenameModal() {
     document.getElementById('renameModal').classList.remove('active');
     renameTarget = null;
+    isCreating = false; // Reset creation flag
 }
 
 async function confirmRename() {
@@ -1525,6 +1538,7 @@ async function confirmRename() {
     renderFileExplorer();
     closeRenameModal();
     showToast('Renamed successfully');
+    isCreating = false; // Reset creation flag
 }
 
 function openDeleteModal() {
