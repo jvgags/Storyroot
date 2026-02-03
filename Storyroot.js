@@ -266,6 +266,13 @@ window.onload = async function() {
         }
     });
 
+    // Close context menus when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.item-ellipsis-btn') && !e.target.closest('.item-actions')) {
+            closeContextMenus();
+        }
+    });
+
     // Update UI
     renderFileExplorer();
     
@@ -864,20 +871,52 @@ function createFolderElement(folder) {
     icon.textContent = '📁';
     
     const name = document.createElement('span');
+    name.className = 'item-name';
     name.textContent = folder.name;
+    
+    // Ellipsis button to show context menu
+    const ellipsisBtn = document.createElement('button');
+    ellipsisBtn.className = 'item-ellipsis-btn';
+    ellipsisBtn.textContent = '⋯';
+    ellipsisBtn.title = 'More actions';
+    ellipsisBtn.onclick = (e) => {
+        e.stopPropagation();
+        
+        // Close any other open context menus
+        document.querySelectorAll('.item-actions.show').forEach(menu => {
+            menu.classList.remove('show');
+        });
+        
+        const actions = div.querySelector('.item-actions');
+        actions.classList.toggle('show');
+        
+        // Position the context menu
+        const rect = ellipsisBtn.getBoundingClientRect();
+        actions.style.top = (rect.bottom + 5) + 'px';
+        actions.style.left = (rect.left - 140) + 'px';
+    };
     
     const actions = document.createElement('div');
     actions.className = 'item-actions';
     actions.innerHTML = `
-        <button class="item-action-btn" onclick="event.stopPropagation(); createSubfolder('${folder.id}')" title="New Subfolder">📁+</button>
-        <button class="item-action-btn" onclick="event.stopPropagation(); createNoteInFolder('${folder.id}')" title="New Note">➕</button>
-        <button class="item-action-btn" onclick="event.stopPropagation(); renameItem('folder', '${folder.id}', '${folder.name}')" title="Rename">✏️</button>
-        <button class="item-action-btn" onclick="event.stopPropagation(); deleteFolderById('${folder.id}')" title="Delete">🗑️</button>
+        <button class="item-action-btn" onclick="event.stopPropagation(); createSubfolder('${folder.id}'); closeContextMenus();">
+            <span>📁</span> New Subfolder
+        </button>
+        <button class="item-action-btn" onclick="event.stopPropagation(); createNoteInFolder('${folder.id}'); closeContextMenus();">
+            <span>📄</span> New Note
+        </button>
+        <button class="item-action-btn" onclick="event.stopPropagation(); renameItem('folder', '${folder.id}', '${folder.name}'); closeContextMenus();">
+            <span>✏️</span> Rename
+        </button>
+        <button class="item-action-btn" onclick="event.stopPropagation(); deleteFolderById('${folder.id}'); closeContextMenus();">
+            <span>🗑️</span> Delete
+        </button>
     `;
     
     div.appendChild(toggle);
     div.appendChild(icon);
     div.appendChild(name);
+    div.appendChild(ellipsisBtn);
     div.appendChild(actions);
     
     return div;
@@ -901,18 +940,48 @@ function createNoteElement(note, inFolder, folderId) {
     icon.textContent = '📄';
     
     const name = document.createElement('span');
+    name.className = 'item-name';
     name.textContent = note.title;
+    
+    // Ellipsis button to show context menu
+    const ellipsisBtn = document.createElement('button');
+    ellipsisBtn.className = 'item-ellipsis-btn';
+    ellipsisBtn.textContent = '⋯';
+    ellipsisBtn.title = 'More actions';
+    ellipsisBtn.onclick = (e) => {
+        e.stopPropagation();
+        
+        // Close any other open context menus
+        document.querySelectorAll('.item-actions.show').forEach(menu => {
+            menu.classList.remove('show');
+        });
+        
+        const actions = div.querySelector('.item-actions');
+        actions.classList.toggle('show');
+        
+        // Position the context menu
+        const rect = ellipsisBtn.getBoundingClientRect();
+        actions.style.top = (rect.bottom + 5) + 'px';
+        actions.style.left = (rect.left - 140) + 'px';
+    };
     
     const actions = document.createElement('div');
     actions.className = 'item-actions';
     actions.innerHTML = `
-        <button class="item-action-btn" onclick="event.stopPropagation(); duplicateNote('${note.id}')" title="Duplicate">📋</button>
-        <button class="item-action-btn" onclick="event.stopPropagation(); renameItem('note', '${note.id}', '${note.title}')" title="Rename">✏️</button>
-        <button class="item-action-btn" onclick="event.stopPropagation(); deleteNoteById('${note.id}')" title="Delete">🗑️</button>
+        <button class="item-action-btn" onclick="event.stopPropagation(); duplicateNote('${note.id}'); closeContextMenus();">
+            <span>📋</span> Duplicate
+        </button>
+        <button class="item-action-btn" onclick="event.stopPropagation(); renameItem('note', '${note.id}', '${note.title}'); closeContextMenus();">
+            <span>✏️</span> Rename
+        </button>
+        <button class="item-action-btn" onclick="event.stopPropagation(); deleteNoteById('${note.id}'); closeContextMenus();">
+            <span>🗑️</span> Delete
+        </button>
     `;
     
     div.appendChild(icon);
     div.appendChild(name);
+    div.appendChild(ellipsisBtn);
     div.appendChild(actions);
     
     return div;
@@ -929,6 +998,12 @@ function updateActiveNote() {
             activeEl.classList.add('active');
         }
     }
+}
+
+function closeContextMenus() {
+    document.querySelectorAll('.item-actions.show').forEach(menu => {
+        menu.classList.remove('show');
+    });
 }
 
 function updateBreadcrumb(note) {
