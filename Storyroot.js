@@ -32,6 +32,10 @@ let renameTarget = null;
 let deleteTarget = null;
 let isCreating = false; // Track if we're creating vs renaming
 
+// Drag and drop state
+let draggedItem = null;
+let draggedType = null; // 'note' or 'folder'
+
 /* ========== DATABASE FUNCTIONS ========== */
 
 function openDB() {
@@ -171,6 +175,36 @@ window.onload = async function() {
     } catch (e) {
         console.error('Failed to load data:', e);
         showToast('Failed to load data from database');
+    }
+    
+    // Migration: Add order field to notes that don't have it
+    let needsSave = false;
+    notes.forEach((note, index) => {
+        if (note.order === undefined) {
+            note.order = index * 1000; // Space them out by 1000
+            needsSave = true;
+        }
+    });
+    if (needsSave) {
+        // Save all migrated notes
+        for (const note of notes) {
+            await saveNote(note);
+        }
+    }
+    
+    // Migration: Add order field to folders that don't have it
+    let folderNeedsSave = false;
+    folders.forEach((folder, index) => {
+        if (folder.order === undefined) {
+            folder.order = index * 1000;
+            folderNeedsSave = true;
+        }
+    });
+    if (folderNeedsSave) {
+        // Save all migrated folders
+        for (const folder of folders) {
+            await saveFolder(folder);
+        }
     }
 
     // Apply saved theme
@@ -335,6 +369,7 @@ function createNewNote() {
         content: '',
         folderId: null,
         tags: [],
+        order: Date.now(), // Use timestamp for initial ordering
         created: new Date().toISOString(),
         modified: new Date().toISOString()
     };
@@ -363,6 +398,7 @@ function createNoteInFolder(folderId) {
         content: '',
         folderId: folderId,
         tags: [],
+        order: Date.now(), // Use timestamp for initial ordering
         created: new Date().toISOString(),
         modified: new Date().toISOString()
     };
@@ -566,6 +602,7 @@ async function duplicateNote(noteId) {
         folderId: originalNote.folderId,
         tags: [...(originalNote.tags || [])],
         links: [...(originalNote.links || [])],
+        order: Date.now(), // New order value
         created: new Date().toISOString(),
         modified: new Date().toISOString()
     };
@@ -656,7 +693,8 @@ function createNewFolder() {
         id: generateId(),
         name: 'New Folder',
         parentFolderId: null,
-        collapsed: false
+        collapsed: false,
+        order: Date.now()
     };
     
     folders.push(folder);
@@ -676,7 +714,8 @@ function createSubfolder(parentFolderId) {
         id: generateId(),
         name: 'New Folder',
         parentFolderId: parentFolderId,
-        collapsed: false
+        collapsed: false,
+        order: Date.now()
     };
     
     // Make sure parent folder is expanded
@@ -725,6 +764,312 @@ function deleteFolderById(folderId) {
     
     document.getElementById('deleteMessage').textContent = message;
     openDeleteModal();
+}
+
+/* ========== DRAG AND DROP ========== */
+
+function handleDragStart(e) {
+    // Prevent dragging if clicking on interactive elements
+    if (e.target.classList.contains('item-ellipsis-btn') || 
+        e.target.classList.contains('folder-toggle') ||
+        e.target.closest('.item-actions') ||
+        e.target.closest('.item-ellipsis-btn') ||
+        e.target.closest('.folder-toggle')) {
+        e.preventDefault();
+        return;
+    }
+    
+    const target = e.currentTarget;
+    draggedItem = target;
+    
+    // Determine if we're dragging a note or folder
+    if (target.hasAttribute('data-note-id')) {
+        draggedType = 'note';
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', target.getAttribute('data-note-id'));
+    } else if (target.hasAttribute('data-folder-id')) {
+        draggedType = 'folder';
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', target.getAttribute('data-folder-id'));
+    }
+    
+    // Add dragging class for visual feedback
+    setTimeout(() => {
+        target.classList.add('dragging');
+    }, 0);
+}
+
+function handleDragEnd(e) {
+    const target = e.currentTarget;
+    target.classList.remove('dragging');
+    
+    // Remove all drop-target highlights
+    document.querySelectorAll('.drop-target').forEach(el => {
+        el.classList.remove('drop-target');
+    });
+    document.querySelectorAll('.drop-target-reorder').forEach(el => {
+        el.classList.remove('drop-target-reorder');
+    });
+    
+    draggedItem = null;
+    draggedType = null;
+}
+
+function handleDragOver(e) {
+    // Only allow dropping on folders, not on notes
+    if (!e.currentTarget.hasAttribute('data-folder-id')) {
+        return;
+    }
+    
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    const target = e.currentTarget;
+    const targetFolderId = target.getAttribute('data-folder-id');
+    
+    // Don't allow dropping a folder into itself or its children
+    if (draggedType === 'folder' && draggedItem) {
+        const draggedFolderId = draggedItem.getAttribute('data-folder-id');
+        if (draggedFolderId === targetFolderId) {
+            return; // Can't drop folder into itself
+        }
+        
+        // Check if target is a child of dragged folder
+        if (isChildFolder(targetFolderId, draggedFolderId)) {
+            return; // Can't drop folder into its own child
+        }
+        
+        // If Shift key is held, show nest indicator, otherwise show reorder
+        if (e.shiftKey) {
+            target.classList.add('drop-target');
+            target.classList.remove('drop-target-reorder');
+        } else {
+            target.classList.add('drop-target-reorder');
+            target.classList.remove('drop-target');
+        }
+        return;
+    }
+    
+    // For notes being dropped on folders, always show nest indicator
+    target.classList.add('drop-target');
+    target.classList.remove('drop-target-reorder');
+}
+
+function handleDragLeave(e) {
+    const target = e.currentTarget;
+    target.classList.remove('drop-target');
+    target.classList.remove('drop-target-reorder');
+}
+
+function handleNoteDragOver(e) {
+    // Only allow dropping notes on notes
+    if (draggedType !== 'note') {
+        return;
+    }
+    
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    const target = e.currentTarget;
+    target.classList.add('drop-target');
+}
+
+async function handleNoteDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const target = e.currentTarget;
+    target.classList.remove('drop-target');
+    
+    if (!draggedItem || draggedType !== 'note') return;
+    
+    const draggedNoteId = draggedItem.getAttribute('data-note-id');
+    const targetNoteId = target.getAttribute('data-note-id');
+    
+    if (draggedNoteId === targetNoteId) return; // Can't drop on self
+    
+    const draggedNote = notes.find(n => n.id === draggedNoteId);
+    const targetNote = notes.find(n => n.id === targetNoteId);
+    
+    if (!draggedNote || !targetNote) return;
+    
+    // Move dragged note to same folder as target
+    draggedNote.folderId = targetNote.folderId;
+    
+    // Reorder: place dragged note right after target note
+    const sameFolderNotes = notes
+        .filter(n => n.folderId === targetNote.folderId)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+    
+    const targetIndex = sameFolderNotes.findIndex(n => n.id === targetNoteId);
+    
+    // Calculate new order values
+    if (targetIndex >= 0) {
+        const targetOrder = targetNote.order || 0;
+        const nextNote = sameFolderNotes[targetIndex + 1];
+        const nextOrder = nextNote ? (nextNote.order || 0) : (targetOrder + 1000);
+        
+        // Place dragged note between target and next note
+        draggedNote.order = (targetOrder + nextOrder) / 2;
+    }
+    
+    draggedNote.modified = new Date().toISOString();
+    await saveNote(draggedNote);
+    
+    renderFileExplorer();
+    showToast('Note reordered');
+}
+
+async function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const target = e.currentTarget;
+    const isReorder = target.classList.contains('drop-target-reorder');
+    target.classList.remove('drop-target');
+    target.classList.remove('drop-target-reorder');
+    
+    if (!draggedItem) return;
+    
+    const targetFolderId = target.getAttribute('data-folder-id');
+    
+    if (draggedType === 'note') {
+        const noteId = draggedItem.getAttribute('data-note-id');
+        const note = notes.find(n => n.id === noteId);
+        
+        if (note) {
+            // Move note to folder (or keep in same folder)
+            note.folderId = targetFolderId;
+            note.modified = new Date().toISOString();
+            await saveNote(note);
+            
+            // Expand target folder if collapsed
+            const targetFolder = folders.find(f => f.id === targetFolderId);
+            if (targetFolder && targetFolder.collapsed) {
+                targetFolder.collapsed = false;
+                await saveFolder(targetFolder);
+            }
+            
+            renderFileExplorer();
+            if (currentNoteId === note.id) {
+                updateBreadcrumb(note);
+            }
+            showToast('Note moved');
+        }
+    } else if (draggedType === 'folder') {
+        const draggedFolderId = draggedItem.getAttribute('data-folder-id');
+        const draggedFolder = folders.find(f => f.id === draggedFolderId);
+        const targetFolder = folders.find(f => f.id === targetFolderId);
+        
+        if (draggedFolder && targetFolder) {
+            // Don't allow dropping a folder into itself or its children
+            if (draggedFolderId === targetFolderId || isChildFolder(targetFolderId, draggedFolderId)) {
+                showToast('Cannot move folder into itself or its children');
+                return;
+            }
+            
+            if (isReorder) {
+                // Reorder: place dragged folder right after target folder at same level
+                draggedFolder.parentFolderId = targetFolder.parentFolderId;
+                
+                // Get all folders at the same level
+                const sameLevelFolders = folders
+                    .filter(f => f.parentFolderId === targetFolder.parentFolderId)
+                    .sort((a, b) => (a.order || 0) - (b.order || 0));
+                
+                const targetIndex = sameLevelFolders.findIndex(f => f.id === targetFolderId);
+                
+                if (targetIndex >= 0) {
+                    const targetOrder = targetFolder.order || 0;
+                    const nextFolder = sameLevelFolders[targetIndex + 1];
+                    const nextOrder = nextFolder ? (nextFolder.order || 0) : (targetOrder + 1000);
+                    
+                    // Place dragged folder between target and next folder
+                    draggedFolder.order = (targetOrder + nextOrder) / 2;
+                }
+                
+                await saveFolder(draggedFolder);
+                renderFileExplorer();
+                showToast('Folder reordered');
+            } else {
+                // Nest: move folder into target folder (Shift key was held)
+                draggedFolder.parentFolderId = targetFolderId;
+                await saveFolder(draggedFolder);
+                
+                // Expand target folder if collapsed
+                if (targetFolder.collapsed) {
+                    targetFolder.collapsed = false;
+                    await saveFolder(targetFolder);
+                }
+                
+                renderFileExplorer();
+                showToast('Folder nested');
+            }
+        }
+    }
+}
+
+function isChildFolder(childId, parentId) {
+    let currentFolder = folders.find(f => f.id === childId);
+    
+    while (currentFolder && currentFolder.parentFolderId) {
+        if (currentFolder.parentFolderId === parentId) {
+            return true;
+        }
+        currentFolder = folders.find(f => f.id === currentFolder.parentFolderId);
+    }
+    
+    return false;
+}
+
+function handleRootDragOver(e) {
+    // Only handle if dragging over the explorer background (not over a folder/note)
+    if (e.target.id === 'fileExplorer' || e.target.classList.contains('file-explorer')) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    }
+}
+
+async function handleRootDrop(e) {
+    // Only handle if dropping on the explorer background (not on a folder/note)
+    if (e.target.id !== 'fileExplorer' && !e.target.classList.contains('file-explorer')) {
+        return;
+    }
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!draggedItem) return;
+    
+    if (draggedType === 'note') {
+        const noteId = draggedItem.getAttribute('data-note-id');
+        const note = notes.find(n => n.id === noteId);
+        
+        if (note) {
+            // Move note to root (no folder)
+            note.folderId = null;
+            note.modified = new Date().toISOString();
+            await saveNote(note);
+            
+            renderFileExplorer();
+            if (currentNoteId === note.id) {
+                updateBreadcrumb(note);
+            }
+            showToast('Note moved to root');
+        }
+    } else if (draggedType === 'folder') {
+        const folderId = draggedItem.getAttribute('data-folder-id');
+        const folder = folders.find(f => f.id === folderId);
+        
+        if (folder) {
+            // Move folder to root
+            folder.parentFolderId = null;
+            await saveFolder(folder);
+            
+            renderFileExplorer();
+            showToast('Folder moved to root');
+        }
+    }
 }
 
 /* ========== MARKDOWN PROCESSING ========== */
@@ -807,11 +1152,15 @@ function renderFileExplorer() {
     const explorer = document.getElementById('fileExplorer');
     explorer.innerHTML = '';
     
+    // Add drag and drop listeners to the explorer itself for dropping at root
+    explorer.addEventListener('dragover', handleRootDragOver);
+    explorer.addEventListener('drop', handleRootDrop);
+    
     // Render folders hierarchically
     renderFolderTree(null, explorer);
     
-    // Render root notes (no folder)
-    const rootNotes = notes.filter(n => !n.folderId);
+    // Render root notes (no folder), sorted by order
+    const rootNotes = notes.filter(n => !n.folderId).sort((a, b) => (a.order || 0) - (b.order || 0));
     rootNotes.forEach(note => {
         const noteEl = createNoteElement(note, false);
         explorer.appendChild(noteEl);
@@ -819,8 +1168,10 @@ function renderFileExplorer() {
 }
 
 function renderFolderTree(parentFolderId, container) {
-    // Get folders at this level
-    const childFolders = folders.filter(f => f.parentFolderId === parentFolderId);
+    // Get folders at this level, sorted by order
+    const childFolders = folders
+        .filter(f => f.parentFolderId === parentFolderId)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
     
     childFolders.forEach(folder => {
         const folderEl = createFolderElement(folder);
@@ -830,8 +1181,8 @@ function renderFolderTree(parentFolderId, container) {
             // Render subfolders
             renderFolderTree(folder.id, container);
             
-            // Render notes in this folder
-            const folderNotes = notes.filter(n => n.folderId === folder.id);
+            // Render notes in this folder, sorted by order
+            const folderNotes = notes.filter(n => n.folderId === folder.id).sort((a, b) => (a.order || 0) - (b.order || 0));
             folderNotes.forEach(note => {
                 const noteEl = createNoteElement(note, true, folder.id);
                 container.appendChild(noteEl);
@@ -856,12 +1207,20 @@ function createFolderElement(folder) {
     const div = document.createElement('div');
     div.className = 'folder-item';
     div.setAttribute('data-folder-id', folder.id);
+    div.setAttribute('draggable', 'true');
     
     // Add indentation for nested folders
     if (folder.parentFolderId) {
         const depth = getFolderDepth(folder.id);
         div.style.marginLeft = (depth * 20) + 'px';
     }
+    
+    // Drag and drop event listeners
+    div.addEventListener('dragstart', handleDragStart);
+    div.addEventListener('dragend', handleDragEnd);
+    div.addEventListener('dragover', handleDragOver);
+    div.addEventListener('dragleave', handleDragLeave);
+    div.addEventListener('drop', handleDrop);
     
     const toggle = document.createElement('span');
     toggle.className = `folder-toggle ${folder.collapsed ? '' : 'open'}`;
@@ -870,6 +1229,14 @@ function createFolderElement(folder) {
         e.stopPropagation();
         toggleFolder(folder.id);
     };
+    // Prevent drag from starting when clicking the toggle
+    toggle.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+    });
+    toggle.addEventListener('dragstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
     
     const icon = document.createElement('span');
     icon.className = 'icon';
@@ -900,9 +1267,25 @@ function createFolderElement(folder) {
         actions.style.top = (rect.bottom + 5) + 'px';
         actions.style.left = (rect.left - 140) + 'px';
     };
+    // Prevent drag from starting when clicking ellipsis
+    ellipsisBtn.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+    });
+    ellipsisBtn.addEventListener('dragstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
     
     const actions = document.createElement('div');
     actions.className = 'item-actions';
+    // Prevent drag from starting on the actions menu
+    actions.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+    });
+    actions.addEventListener('dragstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
     actions.innerHTML = `
         <button class="item-action-btn" onclick="event.stopPropagation(); createSubfolder('${folder.id}'); closeContextMenus();">
             <span>📁</span> New Subfolder
@@ -931,6 +1314,7 @@ function createNoteElement(note, inFolder, folderId) {
     const div = document.createElement('div');
     div.className = `file-item ${currentNoteId === note.id ? 'active' : ''}`;
     div.setAttribute('data-note-id', note.id);
+    div.setAttribute('draggable', 'true');
     
     // Add indentation for notes in folders
     if (inFolder && folderId) {
@@ -939,6 +1323,13 @@ function createNoteElement(note, inFolder, folderId) {
     }
     
     div.onclick = () => openNote(note.id);
+    
+    // Drag and drop event listeners
+    div.addEventListener('dragstart', handleDragStart);
+    div.addEventListener('dragend', handleDragEnd);
+    div.addEventListener('dragover', handleNoteDragOver);
+    div.addEventListener('dragleave', handleDragLeave);
+    div.addEventListener('drop', handleNoteDrop);
     
     const icon = document.createElement('span');
     icon.className = 'icon';
@@ -969,9 +1360,25 @@ function createNoteElement(note, inFolder, folderId) {
         actions.style.top = (rect.bottom + 5) + 'px';
         actions.style.left = (rect.left - 140) + 'px';
     };
+    // Prevent drag from starting when clicking ellipsis
+    ellipsisBtn.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+    });
+    ellipsisBtn.addEventListener('dragstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
     
     const actions = document.createElement('div');
     actions.className = 'item-actions';
+    // Prevent drag from starting on the actions menu
+    actions.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+    });
+    actions.addEventListener('dragstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
     actions.innerHTML = `
         <button class="item-action-btn" onclick="event.stopPropagation(); duplicateNote('${note.id}'); closeContextMenus();">
             <span>📋</span> Duplicate
