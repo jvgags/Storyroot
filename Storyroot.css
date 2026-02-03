@@ -1266,3 +1266,200 @@ body {
     background: var(--border-color);
     margin: 8px 0;
 }
+
+/* ========== SEARCH AND REPLACE PANEL ========== */
+
+.search-replace-panel {
+    display: none;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 12px 15px;
+    position: relative;
+}
+
+.search-replace-panel.active {
+    display: block;
+}
+
+.search-replace-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 900px;
+}
+
+.search-row,
+.replace-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.search-toggle-btn {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.search-toggle-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.search-toggle-btn.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: white;
+}
+
+.replace-input-spacer {
+    width: 28px;
+    flex-shrink: 0;
+}
+
+.search-input {
+    flex: 1;
+    padding: 7px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.search-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.search-btn {
+    padding: 6px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.search-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.search-btn:active {
+    background: var(--bg-tertiary);
+    transform: scale(0.98);
+}
+
+.replace-btn {
+    background: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+.replace-btn:hover {
+    background: var(--accent-secondary);
+    border-color: var(--accent-secondary);
+    color: white;
+}
+
+.replace-all-btn {
+    background: var(--success-color);
+    color: white;
+    border-color: var(--success-color);
+}
+
+.replace-all-btn:hover {
+    opacity: 0.9;
+    color: white;
+}
+
+.search-option-btn {
+    padding: 6px 10px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    transition: all 0.2s;
+    min-width: 32px;
+}
+
+.search-option-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.search-option-btn.active {
+    background: var(--accent-primary);
+    color: white;
+    border-color: var(--accent-primary);
+}
+
+.search-count {
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 45px;
+    text-align: center;
+    font-weight: 500;
+    padding: 0 4px;
+}
+
+.search-close-btn {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.search-close-btn:hover {
+    background: var(--bg-hover);
+    color: var(--error-color);
+}
+
+/* CodeMirror search highlighting */
+.CodeMirror-search-match {
+    background-color: rgba(255, 255, 0, 0.4);
+    border-bottom: 2px solid rgba(255, 165, 0, 0.8);
+}
+
+.CodeMirror-search-match.current {
+    background-color: rgba(255, 165, 0, 0.6);
+    border-bottom: 2px solid rgba(255, 140, 0, 1);
+    box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.3);
+}

@@ -231,10 +231,16 @@ window.onload = async function() {
             }
         }
         
-        // Ctrl+F or Cmd+F to search
+        // Ctrl+F or Cmd+F to open search panel
         if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
             e.preventDefault();
-            document.getElementById('searchInput').focus();
+            openSearchPanel();
+        }
+        
+        // Ctrl+H or Cmd+H to open search and replace panel
+        if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+            e.preventDefault();
+            openSearchPanel(true);
         }
         
         // Formatting shortcuts (only when editor is focused)
@@ -1691,3 +1697,335 @@ window.changeFontSize = changeFontSize;
 window.toggleAutoSave = toggleAutoSave;
 window.toggleVimMode = toggleVimMode;
 window.searchByTag = searchByTag;
+
+/* ========== SEARCH AND REPLACE ========== */
+
+// Search state
+let searchState = {
+    query: '',
+    replaceText: '',
+    matches: [],
+    currentMatchIndex: -1,
+    matchCase: false,
+    wholeWord: false,
+    useRegex: false,
+    markers: []
+};
+
+function openSearchPanel(showReplace = false) {
+    const panel = document.getElementById('searchReplacePanel');
+    const replaceRow = document.getElementById('replaceRow');
+    const replaceToggleBtn = document.getElementById('replaceToggleBtn');
+    const searchInput = document.getElementById('searchTextInput');
+    
+    panel.classList.add('active');
+    
+    if (showReplace) {
+        replaceRow.style.display = 'flex';
+        replaceToggleBtn.classList.add('active');
+    } else {
+        replaceRow.style.display = 'none';
+        replaceToggleBtn.classList.remove('active');
+    }
+    
+    // Focus search input and select any existing text
+    setTimeout(() => {
+        searchInput.focus();
+        searchInput.select();
+    }, 100);
+    
+    // If there's selected text in the editor, use it as search query
+    if (editor) {
+        const selection = editor.getSelection();
+        if (selection) {
+            searchInput.value = selection;
+            performSearch();
+        }
+    }
+}
+
+function toggleReplaceRow() {
+    const replaceRow = document.getElementById('replaceRow');
+    const replaceToggleBtn = document.getElementById('replaceToggleBtn');
+    
+    if (replaceRow.style.display === 'none') {
+        replaceRow.style.display = 'flex';
+        replaceToggleBtn.classList.add('active');
+        // Focus the replace input
+        setTimeout(() => {
+            document.getElementById('replaceTextInput').focus();
+        }, 100);
+    } else {
+        replaceRow.style.display = 'none';
+        replaceToggleBtn.classList.remove('active');
+    }
+}
+
+function closeSearchPanel() {
+    const panel = document.getElementById('searchReplacePanel');
+    panel.classList.remove('active');
+    clearSearchHighlights();
+}
+
+function toggleMatchCase() {
+    searchState.matchCase = !searchState.matchCase;
+    const btn = document.getElementById('matchCaseBtn');
+    btn.classList.toggle('active');
+    if (searchState.query) {
+        performSearch();
+    }
+}
+
+function toggleWholeWord() {
+    searchState.wholeWord = !searchState.wholeWord;
+    const btn = document.getElementById('wholeWordBtn');
+    btn.classList.toggle('active');
+    if (searchState.query) {
+        performSearch();
+    }
+}
+
+function toggleRegex() {
+    searchState.useRegex = !searchState.useRegex;
+    const btn = document.getElementById('regexBtn');
+    btn.classList.toggle('active');
+    if (searchState.query) {
+        performSearch();
+    }
+}
+
+function performSearch() {
+    if (!editor) return;
+    
+    const searchInput = document.getElementById('searchTextInput');
+    searchState.query = searchInput.value;
+    
+    clearSearchHighlights();
+    
+    if (!searchState.query) {
+        updateSearchCount();
+        return;
+    }
+    
+    const doc = editor.getDoc();
+    const content = doc.getValue();
+    
+    // Build search pattern
+    let pattern;
+    try {
+        if (searchState.useRegex) {
+            pattern = new RegExp(searchState.query, searchState.matchCase ? 'g' : 'gi');
+        } else {
+            let escapedQuery = searchState.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            if (searchState.wholeWord) {
+                escapedQuery = '\\b' + escapedQuery + '\\b';
+            }
+            pattern = new RegExp(escapedQuery, searchState.matchCase ? 'g' : 'gi');
+        }
+    } catch (e) {
+        // Invalid regex
+        updateSearchCount();
+        return;
+    }
+    
+    // Find all matches
+    searchState.matches = [];
+    let match;
+    while ((match = pattern.exec(content)) !== null) {
+        const pos = doc.posFromIndex(match.index);
+        const endPos = doc.posFromIndex(match.index + match[0].length);
+        searchState.matches.push({ from: pos, to: endPos, text: match[0] });
+        
+        // Prevent infinite loop with zero-width matches
+        if (match.index === pattern.lastIndex) {
+            pattern.lastIndex++;
+        }
+    }
+    
+    // Set to first match if we don't have a current index
+    if (searchState.matches.length > 0 && searchState.currentMatchIndex === -1) {
+        searchState.currentMatchIndex = 0;
+    }
+    
+    // If current index is out of bounds, reset it
+    if (searchState.currentMatchIndex >= searchState.matches.length) {
+        searchState.currentMatchIndex = searchState.matches.length > 0 ? 0 : -1;
+    }
+    
+    // Highlight all matches without jumping
+    highlightMatchesOnly();
+    
+    updateSearchCount();
+}
+
+function highlightMatchesOnly() {
+    if (!editor) return;
+    
+    const doc = editor.getDoc();
+    
+    searchState.matches.forEach((match, index) => {
+        const marker = doc.markText(match.from, match.to, {
+            className: index === searchState.currentMatchIndex ? 'CodeMirror-search-match current' : 'CodeMirror-search-match'
+        });
+        searchState.markers.push(marker);
+    });
+}
+
+function clearSearchHighlights() {
+    searchState.markers.forEach(marker => marker.clear());
+    searchState.markers = [];
+    searchState.matches = [];
+    searchState.currentMatchIndex = -1;
+}
+
+function updateSearchCount() {
+    const countEl = document.getElementById('searchCount');
+    if (searchState.matches.length === 0) {
+        countEl.textContent = '0/0';
+    } else {
+        countEl.textContent = `${searchState.currentMatchIndex + 1}/${searchState.matches.length}`;
+    }
+}
+
+function jumpToMatch(index) {
+    if (!editor || searchState.matches.length === 0) return;
+    
+    // Update marker classes
+    searchState.markers.forEach((marker, i) => {
+        marker.clear();
+        const match = searchState.matches[i];
+        const className = i === index ? 'CodeMirror-search-match current' : 'CodeMirror-search-match';
+        searchState.markers[i] = editor.getDoc().markText(match.from, match.to, { className });
+    });
+    
+    const match = searchState.matches[index];
+    editor.scrollIntoView(match.from, 100);
+    editor.setSelection(match.from, match.to);
+    editor.focus();
+    
+    searchState.currentMatchIndex = index;
+    updateSearchCount();
+}
+
+function findNext() {
+    if (searchState.matches.length === 0) {
+        // Only perform search if we don't have matches yet
+        performSearch();
+        if (searchState.matches.length === 0) return;
+    }
+    
+    const nextIndex = (searchState.currentMatchIndex + 1) % searchState.matches.length;
+    jumpToMatch(nextIndex);
+}
+
+function findPrevious() {
+    if (searchState.matches.length === 0) {
+        // Only perform search if we don't have matches yet
+        performSearch();
+        if (searchState.matches.length === 0) return;
+    }
+    
+    const prevIndex = searchState.currentMatchIndex - 1 < 0 
+        ? searchState.matches.length - 1 
+        : searchState.currentMatchIndex - 1;
+    jumpToMatch(prevIndex);
+}
+
+function replaceOne() {
+    if (!editor || searchState.currentMatchIndex < 0) return;
+    
+    const replaceInput = document.getElementById('replaceTextInput');
+    searchState.replaceText = replaceInput.value;
+    
+    const doc = editor.getDoc();
+    const match = searchState.matches[searchState.currentMatchIndex];
+    
+    // Replace the current match
+    doc.replaceRange(searchState.replaceText, match.from, match.to);
+    
+    // Mark as changed
+    hasUnsavedChanges = true;
+    updateNoteInMemory();
+    
+    // Re-perform search to update positions
+    performSearch();
+}
+
+function replaceAll() {
+    if (!editor || searchState.matches.length === 0) return;
+    
+    const replaceInput = document.getElementById('replaceTextInput');
+    searchState.replaceText = replaceInput.value;
+    
+    const doc = editor.getDoc();
+    const replacementCount = searchState.matches.length;
+    
+    // Replace from end to beginning to maintain positions
+    for (let i = searchState.matches.length - 1; i >= 0; i--) {
+        const match = searchState.matches[i];
+        doc.replaceRange(searchState.replaceText, match.from, match.to);
+    }
+    
+    // Mark as changed
+    hasUnsavedChanges = true;
+    updateNoteInMemory();
+    
+    // Clear search and show result
+    clearSearchHighlights();
+    searchState.query = '';
+    updateSearchCount();
+    
+    showToast(`Replaced ${replacementCount} occurrence${replacementCount !== 1 ? 's' : ''}`);
+}
+
+// Event listeners for search input
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('searchTextInput');
+    const replaceInput = document.getElementById('replaceTextInput');
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            performSearch();
+        });
+        
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    findPrevious();
+                } else {
+                    findNext();
+                }
+            } else if (e.key === 'Escape') {
+                closeSearchPanel();
+            }
+        });
+    }
+    
+    if (replaceInput) {
+        replaceInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    replaceAll();
+                } else {
+                    replaceOne();
+                }
+            } else if (e.key === 'Escape') {
+                closeSearchPanel();
+            }
+        });
+    }
+});
+
+// Export search functions
+window.openSearchPanel = openSearchPanel;
+window.closeSearchPanel = closeSearchPanel;
+window.toggleReplaceRow = toggleReplaceRow;
+window.toggleMatchCase = toggleMatchCase;
+window.toggleWholeWord = toggleWholeWord;
+window.toggleRegex = toggleRegex;
+window.findNext = findNext;
+window.findPrevious = findPrevious;
+window.replaceOne = replaceOne;
+window.replaceAll = replaceAll;
