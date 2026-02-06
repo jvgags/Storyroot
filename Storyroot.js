@@ -1599,8 +1599,25 @@ function insertFormatting(type) {
     resetAutoSaveTimer();
 }
 
-function switchEditorTab(mode) {
-    currentEditMode = mode;
+function switchEditorTab(eventOrMode, mode) {
+    // Handle both old signature (mode only) and new signature (event, mode)
+    let actualMode;
+    if (typeof eventOrMode === 'string') {
+        // Old signature: switchEditorTab('edit')
+        actualMode = eventOrMode;
+    } else {
+        // New signature: switchEditorTab(event, 'edit')
+        const event = eventOrMode;
+        actualMode = mode;
+        
+        // Prevent event from bubbling and triggering other click handlers
+        if (event) {
+            event.stopPropagation();
+            event.preventDefault();
+        }
+    }
+    
+    currentEditMode = actualMode;
     
     const editPane = document.getElementById('editPane');
     const previewPane = document.getElementById('previewPane');
@@ -1609,21 +1626,21 @@ function switchEditorTab(mode) {
     // Update view mode buttons
     document.querySelectorAll('.view-mode-btn').forEach(btn => {
         btn.classList.remove('active');
-        if (btn.getAttribute('data-mode') === mode) {
+        if (btn.getAttribute('data-mode') === actualMode) {
             btn.classList.add('active');
         }
     });
     
-    if (mode === 'edit') {
+    if (actualMode === 'edit') {
         editPane.style.display = 'flex';
         previewPane.style.display = 'none';
         container.classList.remove('split-view');
-    } else if (mode === 'preview') {
+    } else if (actualMode === 'preview') {
         editPane.style.display = 'none';
         previewPane.style.display = 'block';
         container.classList.remove('split-view');
         updatePreview();
-    } else if (mode === 'split') {
+    } else if (actualMode === 'split') {
         editPane.style.display = 'flex';
         previewPane.style.display = 'block';
         container.classList.add('split-view');
