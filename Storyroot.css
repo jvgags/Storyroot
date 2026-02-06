@@ -1550,3 +1550,7 @@ body {
     border-bottom: 2px solid rgba(255, 140, 0, 1);
     box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.3);
 }
+
+#renameInput {
+    width: 100%;
+}
