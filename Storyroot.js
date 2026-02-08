@@ -1245,6 +1245,7 @@ function createFolderElement(folder) {
     const name = document.createElement('span');
     name.className = 'item-name';
     name.textContent = folder.name;
+    name.title = folder.name;
     
     // Ellipsis button to show context menu
     const ellipsisBtn = document.createElement('button');
@@ -1338,6 +1339,7 @@ function createNoteElement(note, inFolder, folderId) {
     const name = document.createElement('span');
     name.className = 'item-name';
     name.textContent = note.title;
+    name.title = note.title;
     
     // Ellipsis button to show context menu
     const ellipsisBtn = document.createElement('button');
