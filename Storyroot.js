@@ -463,6 +463,9 @@ function openNote(noteId) {
     updateActiveNote();
     renderTabs(); // Update tab highlighting
     
+    // Refresh the current edit mode to ensure the view is updated correctly
+    switchEditorTab(currentEditMode);
+    
     // Save last opened note
     settings.lastOpenedNote = noteId;
     saveSettings();
@@ -1637,6 +1640,10 @@ function switchEditorTab(eventOrMode, mode) {
         editPane.style.display = 'flex';
         previewPane.style.display = 'none';
         container.classList.remove('split-view');
+        // Refresh CodeMirror when it becomes visible
+        if (editor) {
+            setTimeout(() => editor.refresh(), 10);
+        }
     } else if (actualMode === 'preview') {
         editPane.style.display = 'none';
         previewPane.style.display = 'block';
@@ -1647,6 +1654,10 @@ function switchEditorTab(eventOrMode, mode) {
         previewPane.style.display = 'block';
         container.classList.add('split-view');
         updatePreview();
+        // Refresh CodeMirror when it becomes visible
+        if (editor) {
+            setTimeout(() => editor.refresh(), 10);
+        }
     }
 }
 
