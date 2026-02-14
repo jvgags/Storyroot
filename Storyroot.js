@@ -1297,7 +1297,7 @@ function createFolderElement(folder) {
         <button class="item-action-btn" onclick="event.stopPropagation(); createNoteInFolder('${folder.id}'); closeContextMenus();">
             <span>📄</span> New Note
         </button>
-        <button class="item-action-btn" onclick="event.stopPropagation(); renameItem('folder', '${folder.id}', '${folder.name}'); closeContextMenus();">
+        <button class="item-action-btn" onclick="event.stopPropagation(); renameItem('folder', '${folder.id}', '${folder.name.replace(/'/g, "\\'")}'); closeContextMenus();">
             <span>✏️</span> Rename
         </button>
         <button class="item-action-btn" onclick="event.stopPropagation(); deleteFolderById('${folder.id}'); closeContextMenus();">
@@ -1388,7 +1388,7 @@ function createNoteElement(note, inFolder, folderId) {
         <button class="item-action-btn" onclick="event.stopPropagation(); duplicateNote('${note.id}'); closeContextMenus();">
             <span>📋</span> Duplicate
         </button>
-        <button class="item-action-btn" onclick="event.stopPropagation(); renameItem('note', '${note.id}', '${note.title}'); closeContextMenus();">
+        <button class="item-action-btn" onclick="event.stopPropagation(); renameItem('note', '${note.id}', '${note.title.replace(/'/g, "\\'")}'); closeContextMenus();">
             <span>✏️</span> Rename
         </button>
         <button class="item-action-btn" onclick="event.stopPropagation(); deleteNoteById('${note.id}'); closeContextMenus();">
