@@ -566,6 +566,32 @@ body {
     content: '';
 }
 
+.breadcrumb-title-editable {
+    cursor: text;
+    border-radius: 4px;
+    padding: 2px 5px;
+    transition: background 0.15s;
+}
+
+.breadcrumb-title-editable:hover {
+    background: var(--hover-bg, rgba(128,128,128,0.12));
+}
+
+.breadcrumb-title-input {
+    font-size: inherit;
+    font-weight: bold;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    border: 1px solid var(--accent-color, #4a90e2);
+    border-radius: 4px;
+    padding: 1px 6px;
+    outline: none;
+    min-width: 60px;
+    max-width: 100%;
+    box-sizing: border-box;
+    box-shadow: 0 0 0 2px rgba(74,144,226,0.2);
+}
+
 .editor-actions {
     display: flex;
     gap: 10px;

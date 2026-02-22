@@ -1438,9 +1438,73 @@ function updateBreadcrumb(note) {
     }
     
     const noteCrumb = document.createElement('span');
-    noteCrumb.className = 'breadcrumb-item';
+    noteCrumb.className = 'breadcrumb-item breadcrumb-title-editable';
     noteCrumb.textContent = note.title;
+    noteCrumb.title = 'Click to rename';
+    noteCrumb.setAttribute('data-note-id', note.id);
+
+    noteCrumb.addEventListener('click', () => {
+        startInlineTitleEdit(noteCrumb, note);
+    });
+
     breadcrumb.appendChild(noteCrumb);
+}
+
+function measureTextWidth(text, el) {
+    const canvas = measureTextWidth._canvas || (measureTextWidth._canvas = document.createElement('canvas'));
+    const ctx = canvas.getContext('2d');
+    const style = window.getComputedStyle(el);
+    ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    return ctx.measureText(text).width;
+}
+
+function startInlineTitleEdit(crumbEl, note) {
+    if (crumbEl.querySelector('input')) return; // already editing
+
+    const currentTitle = note.title;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentTitle;
+    input.className = 'breadcrumb-title-input';
+
+    crumbEl.textContent = '';
+    crumbEl.appendChild(input);
+
+    function resizeInput() {
+        const textWidth = measureTextWidth(input.value || ' ', input);
+        const padding = 20; // account for input padding + border
+        const maxWidth = (crumbEl.closest('.breadcrumb')?.offsetWidth || 400) - 20;
+        input.style.width = Math.min(textWidth + padding, maxWidth) + 'px';
+    }
+
+    // Size immediately, then again after fonts settle
+    resizeInput();
+    requestAnimationFrame(resizeInput);
+
+    input.addEventListener('input', resizeInput);
+    input.focus();
+    input.select();
+
+    async function commitRename() {
+        const newName = input.value.trim();
+        if (newName && newName !== currentTitle) {
+            note.title = newName;
+            note.modified = new Date().toISOString();
+            await saveNote(note);
+            if (openTabs.includes(note.id)) renderTabs();
+            renderFileExplorer();
+            showToast('Note renamed');
+        }
+        // Re-render breadcrumb with latest note data
+        const freshNote = notes.find(n => n.id === note.id) || note;
+        updateBreadcrumb(freshNote);
+    }
+
+    input.addEventListener('blur', commitRename);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.value = currentTitle; input.blur(); }
+    });
 }
 
 function updateRightSidebar(note) {
