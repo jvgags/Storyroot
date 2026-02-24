@@ -1581,3 +1581,107 @@ body {
 #renameInput {
     width: 100%;
 }
+
+/* ========== HIGHLIGHT PICKER ========== */
+
+.highlight-picker-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.highlight-trigger-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 6px;
+}
+
+.highlight-color-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 4px;
+    border-radius: 2px;
+    background: #ffe26a;
+    flex-shrink: 0;
+}
+
+.highlight-popover {
+    display: none;
+    position: fixed;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px;
+    box-shadow: var(--shadow-lg);
+    z-index: 9999;
+    min-width: 160px;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.highlight-popover.open {
+    display: flex;
+}
+
+.highlight-colors {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.hl-color-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.12s, border-color 0.12s;
+    padding: 0;
+}
+
+.hl-color-btn:hover {
+    transform: scale(1.2);
+    border-color: var(--text-secondary);
+}
+
+.hl-color-btn.selected {
+    border-color: var(--text-primary);
+    transform: scale(1.15);
+}
+
+.hl-remove-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 100%;
+    padding: 5px 8px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.hl-remove-btn:hover {
+    background: var(--bg-hover);
+    color: var(--error-color);
+    border-color: var(--error-color);
+}
+
+/* CodeMirror highlight base class */
+.cm-highlight {
+    border-radius: 2px;
+    padding: 0 1px;
+}
+
+/* Preview mark tag fallback */
+#markdownPreview mark {
+    border-radius: 2px;
+    padding: 0 1px;
+}

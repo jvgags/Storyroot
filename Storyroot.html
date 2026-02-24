@@ -134,6 +134,31 @@
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 0 0 1-1v-2zm-5 3v-3H6v3h4zm-5 0v-3H1v2a1 1 0 0 0 1 1h3zm-4-4h4V8H1v3zm0-4h4V4H1v3zm5-3v3h4V4H6zm4 4H6v3h4V8z"/></svg>
                     </button>
                     <div class="toolbar-separator"></div>
+                    <!-- Highlight Button + Color Popover -->
+                    <div class="highlight-picker-wrapper" id="highlightPickerWrapper">
+                        <button class="toolbar-btn highlight-trigger-btn" id="highlightTriggerBtn" onclick="toggleHighlightPicker(event)" title="Highlight text">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6 12.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5z"/>
+                                <path d="M9.5 1a.5.5 0 0 1 .5.5V3h1.5a.5.5 0 0 1 .354.854L10 5.707V9.5a.5.5 0 0 1-.146.354l-1 1a.5.5 0 0 1-.708 0l-1-1A.5.5 0 0 1 7 9.5V5.707L5.146 3.854A.5.5 0 0 1 5.5 3H7V1.5a.5.5 0 0 1 .5-.5h2z"/>
+                            </svg>
+                            <span class="highlight-color-swatch" id="highlightColorSwatch"></span>
+                        </button>
+                        <div class="highlight-popover" id="highlightPopover">
+                            <div class="highlight-colors">
+                                <button class="hl-color-btn" data-color="#ffe26a" style="background:#ffe26a" title="Yellow" onclick="applyHighlight('#ffe26a')"></button>
+                                <button class="hl-color-btn" data-color="#a8f5a2" style="background:#a8f5a2" title="Green" onclick="applyHighlight('#a8f5a2')"></button>
+                                <button class="hl-color-btn" data-color="#ffb3c1" style="background:#ffb3c1" title="Pink" onclick="applyHighlight('#ffb3c1')"></button>
+                                <button class="hl-color-btn" data-color="#93d5ff" style="background:#93d5ff" title="Blue" onclick="applyHighlight('#93d5ff')"></button>
+                                <button class="hl-color-btn" data-color="#ffd0a0" style="background:#ffd0a0" title="Orange" onclick="applyHighlight('#ffd0a0')"></button>
+                                <button class="hl-color-btn" data-color="#d4b3ff" style="background:#d4b3ff" title="Purple" onclick="applyHighlight('#d4b3ff')"></button>
+                            </div>
+                            <button class="hl-remove-btn" onclick="removeHighlight()" title="Remove highlight">
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854z"/></svg>
+                                Remove Highlight
+                            </button>
+                        </div>
+                    </div>
+                    <div class="toolbar-separator"></div>
                     <button class="toolbar-btn view-mode-btn" onclick="switchEditorTab(event, 'edit')" title="Edit Mode" data-mode="edit">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg>
                     </button>

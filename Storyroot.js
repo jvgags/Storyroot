@@ -350,6 +350,11 @@ function initializeCodeMirror() {
         if (currentNoteId) {
             updatePreview();
             resetAutoSaveTimer();
+            // Re-apply highlight markers (character positions may shift with edits)
+            const note = notes.find(n => n.id === currentNoteId);
+            if (note && note.highlights && note.highlights.length > 0) {
+                applyHighlightMarkers(note);
+            }
         }
     });
 }
@@ -369,6 +374,7 @@ function createNewNote() {
         content: '',
         folderId: null,
         tags: [],
+        highlights: [],
         order: Date.now(), // Use timestamp for initial ordering
         created: new Date().toISOString(),
         modified: new Date().toISOString()
@@ -448,6 +454,12 @@ function openNote(noteId) {
     if (editor) {
         editor.setValue(note.content || '');
     }
+    
+    // Ensure highlights array exists
+    if (!note.highlights) note.highlights = [];
+    
+    // Apply highlight markers to CodeMirror
+    applyHighlightMarkers(note);
     
     // Always extract fresh tags and links from content for sidebar display
     note.tags = extractTags(note.content || '');
@@ -1108,7 +1120,6 @@ function extractLinks(content) {
 function updatePreview() {
     if (currentEditMode === 'edit') return;
     
-    const editor = document.getElementById('markdownEditor');
     const preview = document.getElementById('markdownPreview');
     
     let content = getEditorPlainText();
@@ -1132,11 +1143,14 @@ function updatePreview() {
     const html = marked.parse(content);
     preview.innerHTML = DOMPurify.sanitize(html);
     
-    // Update table of contents
+    // Apply highlights to preview
     if (currentNoteId) {
         const note = notes.find(n => n.id === currentNoteId);
+        if (note && note.highlights && note.highlights.length > 0) {
+            applyHighlightsToPreview(preview, note.highlights, getEditorPlainText());
+        }
+        
         if (note) {
-            // Create a temporary note object with current content for TOC update
             updateTableOfContents({ ...note, content: getEditorPlainText() });
         }
     }
@@ -1147,6 +1161,230 @@ function updatePreview() {
 function getEditorPlainText() {
     if (!editor) return '';
     return editor.getValue();
+}
+
+/* ========== HIGHLIGHT ENGINE ========== */
+
+// Tracks active CodeMirror text markers for highlights
+let activeHighlightMarkers = [];
+// Currently selected highlight color
+let currentHighlightColor = '#ffe26a';
+
+function toggleHighlightPicker(event) {
+    event.stopPropagation();
+    const popover = document.getElementById('highlightPopover');
+    const isOpen = popover.classList.contains('open');
+    closeHighlightPicker();
+    if (!isOpen) {
+        // Position below the trigger button using fixed coords
+        const btn = document.getElementById('highlightTriggerBtn');
+        const rect = btn.getBoundingClientRect();
+        popover.style.top = (rect.bottom + 6) + 'px';
+        popover.style.left = (rect.left + rect.width / 2) + 'px';
+        popover.style.transform = 'translateX(-50%)';
+        popover.classList.add('open');
+        setTimeout(() => {
+            document.addEventListener('click', closeHighlightPickerOnOutsideClick, { once: true });
+        }, 0);
+    }
+}
+
+function closeHighlightPickerOnOutsideClick(e) {
+    const wrapper = document.getElementById('highlightPickerWrapper');
+    if (!wrapper.contains(e.target)) {
+        closeHighlightPicker();
+    } else {
+        // Re-attach if click was inside but didn't close
+        document.addEventListener('click', closeHighlightPickerOnOutsideClick, { once: true });
+    }
+}
+
+function closeHighlightPicker() {
+    document.getElementById('highlightPopover').classList.remove('open');
+}
+
+function setHighlightColor(color) {
+    currentHighlightColor = color;
+    const swatch = document.getElementById('highlightColorSwatch');
+    if (swatch) swatch.style.background = color;
+}
+
+function applyHighlight(color) {
+    closeHighlightPicker();
+    setHighlightColor(color);
+    if (!editor || !currentNoteId) return;
+    
+    const doc = editor.getDoc();
+    const from = doc.getCursor('from');
+    const to = doc.getCursor('to');
+    
+    // Must have a selection
+    if (from.line === to.line && from.ch === to.ch) {
+        showToast('Select text to highlight');
+        return;
+    }
+    
+    const note = notes.find(n => n.id === currentNoteId);
+    if (!note) return;
+    if (!note.highlights) note.highlights = [];
+    
+    const fromIndex = doc.indexFromPos(from);
+    const toIndex = doc.indexFromPos(to);
+    const rawText = doc.getSelection();
+    
+    // Derive the plain text that will appear in the preview (strip markdown syntax)
+    const renderedText = markdownToPlainText(rawText);
+    
+    // Remove any existing highlights that overlap this range
+    note.highlights = note.highlights.filter(h => h.to <= fromIndex || h.from >= toIndex);
+    
+    // Store both the raw (for editor) and rendered (for preview) text
+    note.highlights.push({ from: fromIndex, to: toIndex, color, text: rawText, previewText: renderedText });
+    
+    saveNote(note);
+    applyHighlightMarkers(note);
+    updatePreview();
+    hasUnsavedChanges = true;
+}
+
+// Strip markdown syntax to get the plain text that the preview renderer will produce
+function markdownToPlainText(md) {
+    if (!md) return '';
+    // Run through marked then strip all HTML tags
+    const html = marked.parse(md);
+    const tmp = document.createElement('div');
+    tmp.innerHTML = DOMPurify.sanitize(html);
+    return tmp.textContent || tmp.innerText || '';
+}
+
+function removeHighlight() {
+    closeHighlightPicker();
+    if (!editor || !currentNoteId) return;
+    
+    const doc = editor.getDoc();
+    const from = doc.getCursor('from');
+    const to = doc.getCursor('to');
+    
+    const note = notes.find(n => n.id === currentNoteId);
+    if (!note || !note.highlights) return;
+    
+    const fromIndex = doc.indexFromPos(from);
+    const toIndex = doc.indexFromPos(to);
+    
+    // Remove highlights that overlap the selection (or all if no selection, cursor touches one)
+    const selectionIsPoint = from.line === to.line && from.ch === to.ch;
+    
+    if (selectionIsPoint) {
+        // Remove highlight the cursor is inside
+        note.highlights = note.highlights.filter(h => !(h.from <= fromIndex && h.to >= fromIndex));
+    } else {
+        // Remove highlights overlapping the selection
+        note.highlights = note.highlights.filter(h => h.to <= fromIndex || h.from >= toIndex);
+    }
+    
+    saveNote(note);
+    applyHighlightMarkers(note);
+    updatePreview();
+    hasUnsavedChanges = true;
+    showToast('Highlight removed');
+}
+
+function applyHighlightMarkers(note) {
+    if (!editor) return;
+    
+    // Clear existing markers
+    activeHighlightMarkers.forEach(m => m.clear());
+    activeHighlightMarkers = [];
+    
+    if (!note.highlights || note.highlights.length === 0) return;
+    
+    const doc = editor.getDoc();
+    const contentLength = doc.getValue().length;
+    
+    note.highlights.forEach(h => {
+        // Guard against stale highlights beyond content bounds
+        if (h.from >= contentLength || h.to > contentLength || h.from >= h.to) return;
+        
+        const from = doc.posFromIndex(h.from);
+        const to = doc.posFromIndex(h.to);
+        
+        // Create a unique CSS class for this color
+        ensureHighlightColorClass(h.color);
+        
+        const marker = doc.markText(from, to, {
+            className: `cm-highlight cm-highlight-${colorToClass(h.color)}`,
+            inclusiveLeft: false,
+            inclusiveRight: false
+        });
+        activeHighlightMarkers.push(marker);
+    });
+}
+
+// Inject a <style> rule for a highlight color class if not already done
+const _injectedHighlightClasses = new Set();
+function ensureHighlightColorClass(color) {
+    const cls = colorToClass(color);
+    if (_injectedHighlightClasses.has(cls)) return;
+    _injectedHighlightClasses.add(cls);
+    const style = document.createElement('style');
+    style.textContent = `.cm-highlight-${cls} { background: ${color}; border-radius: 2px; }`;
+    document.head.appendChild(style);
+}
+
+function colorToClass(color) {
+    return color.replace('#', 'hl');
+}
+
+// Apply highlights to the rendered preview by matching the stored previewText strings
+function applyHighlightsToPreview(container, highlights) {
+    if (!highlights || highlights.length === 0) return;
+
+    // Use previewText if available, otherwise strip markdown from raw text as fallback
+    const sorted = [...highlights]
+        .map(h => ({
+            ...h,
+            matchText: (h.previewText && h.previewText.trim()) ? h.previewText.trim()
+                     : (h.text ? markdownToPlainText(h.text).trim() : '')
+        }))
+        .filter(h => h.matchText.length > 0)
+        .sort((a, b) => b.matchText.length - a.matchText.length);
+
+    for (const h of sorted) {
+        highlightTextInContainer(container, h.matchText, h.color);
+    }
+}
+
+// Walk text nodes in container and wrap all occurrences of `searchText` with a <mark>
+function highlightTextInContainer(container, searchText, color) {
+    // Collect text nodes fresh each call (prior calls may have split nodes)
+    const textNodes = [];
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    let node;
+    while ((node = walker.nextNode())) {
+        textNodes.push(node);
+    }
+
+    for (const textNode of textNodes) {
+        const idx = textNode.textContent.indexOf(searchText);
+        if (idx === -1) continue;
+
+        const before = textNode.textContent.slice(0, idx);
+        const after = textNode.textContent.slice(idx + searchText.length);
+
+        const mark = document.createElement('mark');
+        mark.style.background = color;
+        mark.style.borderRadius = '2px';
+        mark.style.padding = '0 1px';
+        mark.textContent = searchText;
+
+        const frag = document.createDocumentFragment();
+        if (before) frag.appendChild(document.createTextNode(before));
+        frag.appendChild(mark);
+        if (after) frag.appendChild(document.createTextNode(after));
+
+        textNode.parentNode.replaceChild(frag, textNode);
+        // Only replace first occurrence per node per highlight; walker already moved on
+    }
 }
 
 /* ========== UI RENDERING ========== */
@@ -2619,3 +2857,8 @@ window.findNext = findNext;
 window.findPrevious = findPrevious;
 window.replaceOne = replaceOne;
 window.replaceAll = replaceAll;
+
+// Export highlight functions
+window.toggleHighlightPicker = toggleHighlightPicker;
+window.applyHighlight = applyHighlight;
+window.removeHighlight = removeHighlight;
