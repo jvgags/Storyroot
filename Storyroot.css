@@ -786,6 +786,19 @@ body {
     color: var(--text-primary);
 }
 
+/* Editable preview mode */
+.markdown-preview.preview-editable {
+    outline: none;
+    caret-color: var(--accent-primary);
+    cursor: text;
+    border-radius: 4px;
+    transition: box-shadow 0.2s ease;
+}
+
+.markdown-preview.preview-editable:focus {
+    box-shadow: 0 0 0 2px var(--accent-primary, #7c6ff7)33;
+}
+
 .markdown-preview h1 {
     font-size: 2em;
     margin-top: 0.67em;

@@ -1123,8 +1123,14 @@ function extractLinks(content) {
     return links;
 }
 
+// Track whether the user is actively editing in the preview pane
+let _previewEditing = false;
+let _previewSyncTimer = null;
+
 function updatePreview() {
     if (currentEditMode === 'edit') return;
+    // Don't reset the DOM while the user is actively typing in preview mode
+    if (_previewEditing) return;
     
     const preview = document.getElementById('markdownPreview');
     
@@ -1160,6 +1166,46 @@ function updatePreview() {
             updateTableOfContents({ ...note, content: getEditorPlainText() });
         }
     }
+}
+
+/* ========== PREVIEW EDITABLE MODE ========== */
+
+let _previewInputListener = null;
+
+function _initPreviewEditing() {
+    const preview = document.getElementById('markdownPreview');
+    if (!preview) return;
+
+    // Remove any previously attached listener
+    if (_previewInputListener) {
+        preview.removeEventListener('input', _previewInputListener);
+    }
+
+    _previewInputListener = function() {
+        _previewEditing = true;
+        // Debounce: sync to editor 800ms after user stops typing
+        if (_previewSyncTimer) clearTimeout(_previewSyncTimer);
+        _previewSyncTimer = setTimeout(() => {
+            _syncPreviewToEditor();
+            _previewEditing = false;
+        }, 800);
+    };
+
+    preview.addEventListener('input', _previewInputListener);
+}
+
+function _syncPreviewToEditor() {
+    const preview = document.getElementById('markdownPreview');
+    if (!preview || !editor) return;
+    // Extract plain text from the contenteditable preview
+    const text = preview.innerText || '';
+    const cursor = editor.getCursor();
+    editor.setValue(text);
+    // Attempt to restore cursor position
+    try { editor.setCursor(cursor); } catch(e) {}
+    hasUnsavedChanges = true;
+    // Trigger autosave
+    if (typeof resetAutoSaveTimer === 'function') resetAutoSaveTimer();
 }
 
 /* ========== EDITOR SYNTAX HIGHLIGHTING ========== */
@@ -1958,7 +2004,20 @@ function switchEditorTab(eventOrMode, mode) {
         scrollFraction = getPreviewScrollFraction();
     }
 
+    // Manage contenteditable state on markdownPreview
+    const markdownPreview = document.getElementById('markdownPreview');
+
     if (actualMode === 'edit') {
+        // Flush any pending preview edits before switching away
+        if (_previewEditing && _previewSyncTimer) {
+            clearTimeout(_previewSyncTimer);
+            _syncPreviewToEditor();
+        }
+        _previewEditing = false;
+        if (markdownPreview) {
+            markdownPreview.contentEditable = 'false';
+            markdownPreview.classList.remove('preview-editable');
+        }
         editPane.style.display = 'flex';
         previewPane.style.display = 'none';
         container.classList.remove('split-view');
@@ -1970,13 +2029,25 @@ function switchEditorTab(eventOrMode, mode) {
             }, 10);
         }
     } else if (actualMode === 'preview') {
+        if (markdownPreview) {
+            markdownPreview.contentEditable = 'true';
+            markdownPreview.classList.add('preview-editable');
+        }
         editPane.style.display = 'none';
         previewPane.style.display = 'block';
         container.classList.remove('split-view');
         splitScrollSyncOff();
+        _previewEditing = false;
         updatePreview();
+        _initPreviewEditing();
         setTimeout(() => applyPreviewScrollFraction(scrollFraction), 20);
     } else if (actualMode === 'split') {
+        // Split mode: read-only preview
+        _previewEditing = false;
+        if (markdownPreview) {
+            markdownPreview.contentEditable = 'false';
+            markdownPreview.classList.remove('preview-editable');
+        }
         editPane.style.display = 'flex';
         previewPane.style.display = 'block';
         container.classList.add('split-view');
