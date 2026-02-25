@@ -18,6 +18,7 @@ let currentEditMode = 'edit'; // 'edit', 'preview', 'split'
 let autoSaveTimer = null;
 let hasUnsavedChanges = false;
 let editor = null; // CodeMirror instance
+let _settingEditorValue = false; // Suppress change events during setValue
 
 // IndexedDB Setup
 const DB_NAME = 'StoryrootDB';
@@ -346,15 +347,11 @@ function initializeCodeMirror() {
     
     // Listen for changes
     editor.on('change', () => {
+        if (_settingEditorValue) return; // Suppress during setValue
         hasUnsavedChanges = true;
         if (currentNoteId) {
             updatePreview();
             resetAutoSaveTimer();
-            // Re-apply highlight markers (character positions may shift with edits)
-            const note = notes.find(n => n.id === currentNoteId);
-            if (note && note.highlights && note.highlights.length > 0) {
-                applyHighlightMarkers(note);
-            }
         }
     });
 }
@@ -450,15 +447,17 @@ function openNote(noteId) {
     currentNoteId = noteId;
     hasUnsavedChanges = false;
     
-    // Update CodeMirror editor
+    // Update CodeMirror editor — suppress change handler during setValue
     if (editor) {
+        _settingEditorValue = true;
         editor.setValue(note.content || '');
+        _settingEditorValue = false;
     }
     
     // Ensure highlights array exists
     if (!note.highlights) note.highlights = [];
     
-    // Apply highlight markers to CodeMirror
+    // Apply highlight markers to CodeMirror (after setValue is fully done)
     applyHighlightMarkers(note);
     
     // Always extract fresh tags and links from content for sidebar display
@@ -531,9 +530,13 @@ function switchToTab(noteId) {
         return;
     }
     
-    // Save current note before switching (but don't update sidebar yet)
+    // Save current note (syncs live marker positions → stored offsets, then persists)
     if (currentNoteId && settings.autoSave) {
         saveCurrentNote(true); // Pass true to skip sidebar update
+    } else if (currentNoteId) {
+        // Even without auto-save, sync marker positions so they survive the tab switch
+        const currentNote = notes.find(n => n.id === currentNoteId);
+        if (currentNote) syncHighlightPositionsFromMarkers(currentNote);
     }
     
     openNote(noteId);
@@ -577,13 +580,16 @@ async function saveCurrentNote(skipSidebarUpdate = false) {
     const note = notes.find(n => n.id === currentNoteId);
     if (!note) return;
     
-    const editor = document.getElementById('markdownEditor');
     note.content = getEditorPlainText();
     note.modified = new Date().toISOString();
     
     // Extract tags and links
     note.tags = extractTags(note.content);
     note.links = extractLinks(note.content);
+
+    // Sync highlight positions from live CodeMirror markers back to stored offsets
+    // (markers self-track as the user types, so this keeps stored indices accurate)
+    syncHighlightPositionsFromMarkers(note);
     
     await saveNote(note);
     hasUnsavedChanges = false;
@@ -1231,15 +1237,13 @@ function applyHighlight(color) {
     const fromIndex = doc.indexFromPos(from);
     const toIndex = doc.indexFromPos(to);
     const rawText = doc.getSelection();
-    
-    // Derive the plain text that will appear in the preview (strip markdown syntax)
     const renderedText = markdownToPlainText(rawText);
     
     // Remove any existing highlights that overlap this range
     note.highlights = note.highlights.filter(h => h.to <= fromIndex || h.from >= toIndex);
     
-    // Store both the raw (for editor) and rendered (for preview) text
-    note.highlights.push({ from: fromIndex, to: toIndex, color, text: rawText, previewText: renderedText });
+    // Store indices (for editor markers) + text (for preview matching)
+    note.highlights.push({ from: fromIndex, to: toIndex, text: rawText, previewText: renderedText, color });
     
     saveNote(note);
     applyHighlightMarkers(note);
@@ -1250,7 +1254,6 @@ function applyHighlight(color) {
 // Strip markdown syntax to get the plain text that the preview renderer will produce
 function markdownToPlainText(md) {
     if (!md) return '';
-    // Run through marked then strip all HTML tags
     const html = marked.parse(md);
     const tmp = document.createElement('div');
     tmp.innerHTML = DOMPurify.sanitize(html);
@@ -1261,24 +1264,22 @@ function removeHighlight() {
     closeHighlightPicker();
     if (!editor || !currentNoteId) return;
     
-    const doc = editor.getDoc();
-    const from = doc.getCursor('from');
-    const to = doc.getCursor('to');
-    
     const note = notes.find(n => n.id === currentNoteId);
     if (!note || !note.highlights) return;
     
+    // Sync live marker positions before filtering so we use current positions
+    syncHighlightPositionsFromMarkers(note);
+    
+    const doc = editor.getDoc();
+    const from = doc.getCursor('from');
+    const to = doc.getCursor('to');
     const fromIndex = doc.indexFromPos(from);
     const toIndex = doc.indexFromPos(to);
-    
-    // Remove highlights that overlap the selection (or all if no selection, cursor touches one)
     const selectionIsPoint = from.line === to.line && from.ch === to.ch;
     
     if (selectionIsPoint) {
-        // Remove highlight the cursor is inside
         note.highlights = note.highlights.filter(h => !(h.from <= fromIndex && h.to >= fromIndex));
     } else {
-        // Remove highlights overlapping the selection
         note.highlights = note.highlights.filter(h => h.to <= fromIndex || h.from >= toIndex);
     }
     
@@ -1293,7 +1294,7 @@ function applyHighlightMarkers(note) {
     if (!editor) return;
     
     // Clear existing markers
-    activeHighlightMarkers.forEach(m => m.clear());
+    activeHighlightMarkers.forEach(m => m.marker.clear());
     activeHighlightMarkers = [];
     
     if (!note.highlights || note.highlights.length === 0) return;
@@ -1301,14 +1302,13 @@ function applyHighlightMarkers(note) {
     const doc = editor.getDoc();
     const contentLength = doc.getValue().length;
     
-    note.highlights.forEach(h => {
+    note.highlights.forEach((h) => {
         // Guard against stale highlights beyond content bounds
         if (h.from >= contentLength || h.to > contentLength || h.from >= h.to) return;
         
         const from = doc.posFromIndex(h.from);
         const to = doc.posFromIndex(h.to);
         
-        // Create a unique CSS class for this color
         ensureHighlightColorClass(h.color);
         
         const marker = doc.markText(from, to, {
@@ -1316,7 +1316,22 @@ function applyHighlightMarkers(note) {
             inclusiveLeft: false,
             inclusiveRight: false
         });
-        activeHighlightMarkers.push(marker);
+        // Store the highlight object reference directly so sync never uses stale indices
+        activeHighlightMarkers.push({ marker, highlight: h });
+    });
+}
+
+// Read current marker positions back into note.highlights before switching away.
+// CodeMirror adjusts marker ranges as the document is edited — this captures those updates.
+function syncHighlightPositionsFromMarkers(note) {
+    if (!editor || !note || !note.highlights) return;
+    const doc = editor.getDoc();
+    
+    activeHighlightMarkers.forEach(({ marker, highlight }) => {
+        const range = marker.find();
+        if (!range) return; // marker was cleared/deleted
+        highlight.from = doc.indexFromPos(range.from);
+        highlight.to   = doc.indexFromPos(range.to);
     });
 }
 
@@ -1910,26 +1925,23 @@ function switchEditorTab(eventOrMode, mode) {
     // Handle both old signature (mode only) and new signature (event, mode)
     let actualMode;
     if (typeof eventOrMode === 'string') {
-        // Old signature: switchEditorTab('edit')
         actualMode = eventOrMode;
     } else {
-        // New signature: switchEditorTab(event, 'edit')
         const event = eventOrMode;
         actualMode = mode;
-        
-        // Prevent event from bubbling and triggering other click handlers
         if (event) {
             event.stopPropagation();
             event.preventDefault();
         }
     }
-    
+
+    const previousMode = currentEditMode;
     currentEditMode = actualMode;
-    
+
     const editPane = document.getElementById('editPane');
     const previewPane = document.getElementById('previewPane');
     const container = document.getElementById('editorContainer');
-    
+
     // Update view mode buttons
     document.querySelectorAll('.view-mode-btn').forEach(btn => {
         btn.classList.remove('active');
@@ -1937,28 +1949,46 @@ function switchEditorTab(eventOrMode, mode) {
             btn.classList.add('active');
         }
     });
-    
+
+    // Capture scroll fraction BEFORE switching visibility
+    let scrollFraction = 0;
+    if (previousMode === 'edit' || previousMode === 'split') {
+        scrollFraction = getEditorScrollFraction();
+    } else if (previousMode === 'preview') {
+        scrollFraction = getPreviewScrollFraction();
+    }
+
     if (actualMode === 'edit') {
         editPane.style.display = 'flex';
         previewPane.style.display = 'none';
         container.classList.remove('split-view');
-        // Refresh CodeMirror when it becomes visible
+        splitScrollSyncOff();
         if (editor) {
-            setTimeout(() => editor.refresh(), 10);
+            setTimeout(() => {
+                editor.refresh();
+                applyEditorScrollFraction(scrollFraction);
+            }, 10);
         }
     } else if (actualMode === 'preview') {
         editPane.style.display = 'none';
         previewPane.style.display = 'block';
         container.classList.remove('split-view');
+        splitScrollSyncOff();
         updatePreview();
+        setTimeout(() => applyPreviewScrollFraction(scrollFraction), 20);
     } else if (actualMode === 'split') {
         editPane.style.display = 'flex';
         previewPane.style.display = 'block';
         container.classList.add('split-view');
         updatePreview();
-        // Refresh CodeMirror when it becomes visible
         if (editor) {
-            setTimeout(() => editor.refresh(), 10);
+            setTimeout(() => {
+                editor.refresh();
+                // Sync preview to match editor on entering split
+                const frac = getEditorScrollFraction();
+                applyPreviewScrollFraction(frac);
+                splitScrollSyncOn();
+            }, 20);
         }
     }
 }
@@ -1968,6 +1998,79 @@ function toggleEditMode() {
     const currentIndex = modes.indexOf(currentEditMode);
     const nextMode = modes[(currentIndex + 1) % modes.length];
     switchEditorTab(nextMode);
+}
+
+/* ========== SCROLL SYNC ========== */
+
+// Returns 0..1 fraction of how far through the document the editor cursor/scroll is
+function getEditorScrollFraction() {
+    if (!editor) return 0;
+    const info = editor.getScrollInfo();
+    if (info.height <= info.clientHeight) return 0;
+    return info.top / (info.height - info.clientHeight);
+}
+
+function getPreviewScrollFraction() {
+    const pane = document.getElementById('previewPane');
+    if (!pane) return 0;
+    const max = pane.scrollHeight - pane.clientHeight;
+    if (max <= 0) return 0;
+    return pane.scrollTop / max;
+}
+
+function applyEditorScrollFraction(fraction) {
+    if (!editor) return;
+    const info = editor.getScrollInfo();
+    const max = info.height - info.clientHeight;
+    if (max <= 0) return;
+    editor.scrollTo(null, fraction * max);
+}
+
+function applyPreviewScrollFraction(fraction) {
+    const pane = document.getElementById('previewPane');
+    if (!pane) return;
+    const max = pane.scrollHeight - pane.clientHeight;
+    if (max <= 0) return;
+    pane.scrollTop = fraction * max;
+}
+
+// Split-mode: keep the two panes scroll-synced in real time
+let _splitSyncActive = false;
+let _syncingFromEditor = false;
+let _syncingFromPreview = false;
+
+function splitScrollSyncOn() {
+    if (_splitSyncActive) return;
+    _splitSyncActive = true;
+
+    if (editor) {
+        editor.on('scroll', _onEditorScroll);
+    }
+    const previewPane = document.getElementById('previewPane');
+    if (previewPane) {
+        previewPane.addEventListener('scroll', _onPreviewScroll);
+    }
+}
+
+function splitScrollSyncOff() {
+    _splitSyncActive = false;
+    if (editor) editor.off('scroll', _onEditorScroll);
+    const previewPane = document.getElementById('previewPane');
+    if (previewPane) previewPane.removeEventListener('scroll', _onPreviewScroll);
+}
+
+function _onEditorScroll() {
+    if (_syncingFromPreview) return;
+    _syncingFromEditor = true;
+    applyPreviewScrollFraction(getEditorScrollFraction());
+    requestAnimationFrame(() => { _syncingFromEditor = false; });
+}
+
+function _onPreviewScroll() {
+    if (_syncingFromEditor) return;
+    _syncingFromPreview = true;
+    applyEditorScrollFraction(getPreviewScrollFraction());
+    requestAnimationFrame(() => { _syncingFromPreview = false; });
 }
 
 /* ========== SEARCH ========== */

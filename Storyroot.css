@@ -170,7 +170,7 @@ body {
 }
 
 .sidebar-header {
-    padding: 15px;
+    padding: 10px;
     border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
@@ -191,7 +191,7 @@ body {
 }
 
 .sidebar-actions {
-    padding: 15px;
+    padding: 9px;
     display: flex;
     gap: 10px;
     border-bottom: 1px solid var(--border-color);
@@ -229,7 +229,7 @@ body {
 
 /* Search */
 .search-container {
-    padding: 15px;
+    padding: 9px;
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -262,7 +262,7 @@ body {
     margin: 2px 0;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-secondary);
     transition: all 0.2s;
     user-select: none;
@@ -411,7 +411,7 @@ body {
 
 /* Sidebar Footer */
 .sidebar-footer {
-    padding: 15px;
+    padding: 9px;
     border-top: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
