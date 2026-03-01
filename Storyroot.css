@@ -1739,3 +1739,102 @@ mark.preview-search-match.current {
     border-radius: 2px;
     padding: 0 1px;
 }
+
+/* ========== DISTRACTION-FREE MODE ========== */
+
+/* Hide chrome, keep editor filling viewport */
+body.distraction-free .note-tabs-bar,
+body.distraction-free .editor-header {
+    display: none !important;
+}
+
+body.distraction-free .app-container {
+    /* sidebars already collapsed via JS, but be safe */
+}
+
+body.distraction-free .main-content {
+    background: var(--bg-primary);
+}
+
+body.distraction-free .editor-container {
+    position: relative;
+}
+
+/* Floating toolbar — nearly invisible until hovered */
+body.distraction-free .formatting-toolbar {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    box-shadow: var(--shadow-md);
+    padding: 6px 12px;
+    opacity: 0.06;
+    transition: opacity 0.25s ease, box-shadow 0.25s ease;
+    /* Don't let it shift the editor layout */
+    overflow-x: visible;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    max-width: 90vw;
+}
+
+body.distraction-free .formatting-toolbar:hover {
+    opacity: 1;
+    box-shadow: var(--shadow-lg);
+}
+
+/* Centered, comfortable writing column */
+body.distraction-free .editor-pane .CodeMirror-scroll,
+body.distraction-free .editor-pane .CodeMirror-sizer {
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+body.distraction-free .editor-pane .CodeMirror-scroll {
+    padding: 48px 40px 80px;
+}
+
+body.distraction-free .preview-pane {
+    padding: 48px 40px 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+body.distraction-free .preview-pane .markdown-preview {
+    width: 100%;
+    max-width: 720px;
+}
+
+/* Search/replace panel sits just below the floating toolbar */
+body.distraction-free .search-replace-panel.active {
+    position: fixed;
+    top: 42px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 199;
+    border-radius: 0 0 8px 8px;
+    box-shadow: var(--shadow-md);
+}
+
+/* Floating exit hint — appears at bottom-right */
+body.distraction-free::after {
+    content: 'Press Esc to exit focus mode';
+    position: fixed;
+    bottom: 18px;
+    right: 24px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+    z-index: 300;
+}
+
+body.distraction-free:hover::after {
+    opacity: 1;
+}

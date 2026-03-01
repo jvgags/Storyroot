@@ -247,6 +247,19 @@ window.onload = async function() {
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
+        // F11 or Ctrl+Shift+F → distraction-free
+        if (e.key === 'F11' || ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'f')) {
+            e.preventDefault();
+            toggleDistractionFree();
+        }
+
+        // Escape → exit distraction-free if active
+        if (e.key === 'Escape' && document.body.classList.contains('distraction-free')) {
+            e.preventDefault();
+            exitDistractionFree();
+            return;
+        }
+
         // Ctrl+S or Cmd+S to save
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
@@ -2541,6 +2554,60 @@ function toggleRightSidebar() {
     const sidebar = document.getElementById('rightSidebar');
     sidebar.classList.toggle('collapsed');
 }
+
+/* ========== DISTRACTION-FREE MODE ========== */
+
+let _dfLeftWasCollapsed = false;
+let _dfRightWasCollapsed = false;
+
+function toggleDistractionFree() {
+    if (document.body.classList.contains('distraction-free')) {
+        exitDistractionFree();
+    } else {
+        enterDistractionFree();
+    }
+}
+
+function enterDistractionFree() {
+    const leftSidebar = document.getElementById('leftSidebar');
+    const rightSidebar = document.getElementById('rightSidebar');
+
+    // Remember current sidebar states
+    _dfLeftWasCollapsed = leftSidebar.classList.contains('collapsed');
+    _dfRightWasCollapsed = rightSidebar.classList.contains('collapsed');
+
+    // Collapse both sidebars
+    leftSidebar.classList.add('collapsed');
+    rightSidebar.classList.add('collapsed');
+
+    document.body.classList.add('distraction-free');
+
+    // Update button icon to "exit" icon
+    const btn = document.getElementById('distractionFreeBtn');
+    if (btn) btn.title = 'Exit Distraction-Free (Esc or F11)';
+
+    // Refresh editor so CodeMirror reflows to new size
+    if (editor) setTimeout(() => editor.refresh(), 50);
+}
+
+function exitDistractionFree() {
+    const leftSidebar = document.getElementById('leftSidebar');
+    const rightSidebar = document.getElementById('rightSidebar');
+
+    document.body.classList.remove('distraction-free');
+
+    // Restore sidebar states
+    if (!_dfLeftWasCollapsed) leftSidebar.classList.remove('collapsed');
+    if (!_dfRightWasCollapsed) rightSidebar.classList.remove('collapsed');
+
+    const btn = document.getElementById('distractionFreeBtn');
+    if (btn) btn.title = 'Distraction-Free Mode (F11)';
+
+    if (editor) setTimeout(() => editor.refresh(), 50);
+}
+
+window.toggleDistractionFree = toggleDistractionFree;
+window.exitDistractionFree = exitDistractionFree;
 
 /* ========== UTILITY FUNCTIONS ========== */
 
