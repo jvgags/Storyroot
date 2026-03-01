@@ -789,304 +789,368 @@ function deleteFolderById(folderId) {
 
 /* ========== DRAG AND DROP ========== */
 
+// Active drop indicator element
+let _dropIndicator = null;
+// Current pending drop action: { type: 'before'|'after'|'into', targetEl, targetId, targetKind }
+let _pendingDrop = null;
+
+function _getOrCreateDropIndicator() {
+    if (!_dropIndicator) {
+        _dropIndicator = document.createElement('div');
+        _dropIndicator.className = 'dnd-drop-indicator';
+    }
+    return _dropIndicator;
+}
+
+function _clearDropState() {
+    // Remove indicator from DOM
+    if (_dropIndicator && _dropIndicator.parentNode) {
+        _dropIndicator.parentNode.removeChild(_dropIndicator);
+    }
+    // Clear nest highlight
+    document.querySelectorAll('.dnd-nest-target').forEach(el => el.classList.remove('dnd-nest-target'));
+    _pendingDrop = null;
+}
+
 function handleDragStart(e) {
     // Prevent dragging if clicking on interactive elements
-    if (e.target.classList.contains('item-ellipsis-btn') || 
-        e.target.classList.contains('folder-toggle') ||
-        e.target.closest('.item-actions') ||
+    if (e.target.closest('.item-actions') ||
         e.target.closest('.item-ellipsis-btn') ||
         e.target.closest('.folder-toggle')) {
         e.preventDefault();
         return;
     }
-    
+
     const target = e.currentTarget;
     draggedItem = target;
-    
-    // Determine if we're dragging a note or folder
+
     if (target.hasAttribute('data-note-id')) {
         draggedType = 'note';
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', target.getAttribute('data-note-id'));
     } else if (target.hasAttribute('data-folder-id')) {
         draggedType = 'folder';
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', target.getAttribute('data-folder-id'));
     }
-    
-    // Add dragging class for visual feedback
-    setTimeout(() => {
-        target.classList.add('dragging');
-    }, 0);
+
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', target.getAttribute('data-note-id') || target.getAttribute('data-folder-id'));
+
+    setTimeout(() => target.classList.add('dragging'), 0);
 }
 
 function handleDragEnd(e) {
-    const target = e.currentTarget;
-    target.classList.remove('dragging');
-    
-    // Remove all drop-target highlights
-    document.querySelectorAll('.drop-target').forEach(el => {
-        el.classList.remove('drop-target');
-    });
-    document.querySelectorAll('.drop-target-reorder').forEach(el => {
-        el.classList.remove('drop-target-reorder');
-    });
-    
+    e.currentTarget.classList.remove('dragging');
+    _clearDropState();
     draggedItem = null;
     draggedType = null;
 }
 
+// Unified dragover for all items (folders and notes)
 function handleDragOver(e) {
-    // Only allow dropping on folders, not on notes
-    if (!e.currentTarget.hasAttribute('data-folder-id')) {
-        return;
+    if (!draggedItem) return;
+
+    const target = e.currentTarget;
+    const targetIsFolder = target.hasAttribute('data-folder-id');
+    const targetIsNote = target.hasAttribute('data-note-id');
+
+    // A note being dragged can go before/after any item, or into a folder
+    // A folder being dragged can go before/after any item, or into another folder (but not itself/children)
+    if (draggedType === 'folder' && targetIsFolder) {
+        const draggedFolderId = draggedItem.getAttribute('data-folder-id');
+        const targetFolderId = target.getAttribute('data-folder-id');
+        if (draggedFolderId === targetFolderId || isChildFolder(targetFolderId, draggedFolderId)) {
+            return; // Can't drop into self or children
+        }
     }
-    
+
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    
-    const target = e.currentTarget;
-    const targetFolderId = target.getAttribute('data-folder-id');
-    
-    // Don't allow dropping a folder into itself or its children
-    if (draggedType === 'folder' && draggedItem) {
-        const draggedFolderId = draggedItem.getAttribute('data-folder-id');
-        if (draggedFolderId === targetFolderId) {
-            return; // Can't drop folder into itself
-        }
-        
-        // Check if target is a child of dragged folder
-        if (isChildFolder(targetFolderId, draggedFolderId)) {
-            return; // Can't drop folder into its own child
-        }
-        
-        // If Shift key is held, show nest indicator, otherwise show reorder
-        if (e.shiftKey) {
-            target.classList.add('drop-target');
-            target.classList.remove('drop-target-reorder');
-        } else {
-            target.classList.add('drop-target-reorder');
-            target.classList.remove('drop-target');
-        }
-        return;
+
+    const rect = target.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const h = rect.height;
+
+    let zone;
+    if (targetIsFolder) {
+        // Top 30% → before, middle 40% → into, bottom 30% → after
+        if (y < h * 0.30) zone = 'before';
+        else if (y > h * 0.70) zone = 'after';
+        else zone = 'into';
+    } else {
+        // Notes: top 50% → before, bottom 50% → after
+        zone = y < h * 0.5 ? 'before' : 'after';
     }
-    
-    // For notes being dropped on folders, always show nest indicator
-    target.classList.add('drop-target');
-    target.classList.remove('drop-target-reorder');
+
+    _applyDropVisual(target, zone, targetIsFolder ? target.getAttribute('data-folder-id') : null);
+}
+
+function _applyDropVisual(target, zone, folderId) {
+    _clearDropState();
+    const indicator = _getOrCreateDropIndicator();
+
+    if (zone === 'into' && folderId) {
+        target.classList.add('dnd-nest-target');
+        _pendingDrop = { zone: 'into', targetEl: target, targetId: folderId, targetKind: 'folder' };
+    } else {
+        // Insert indicator before or after target in the DOM
+        const explorer = document.getElementById('fileExplorer');
+        if (zone === 'before') {
+            explorer.insertBefore(indicator, target);
+        } else {
+            // Insert after: before the next sibling, or at end
+            target.parentNode.insertBefore(indicator, target.nextSibling);
+        }
+        _pendingDrop = {
+            zone,
+            targetEl: target,
+            targetId: target.getAttribute('data-folder-id') || target.getAttribute('data-note-id'),
+            targetKind: target.hasAttribute('data-folder-id') ? 'folder' : 'note'
+        };
+    }
 }
 
 function handleDragLeave(e) {
-    const target = e.currentTarget;
-    target.classList.remove('drop-target');
-    target.classList.remove('drop-target-reorder');
-}
-
-function handleNoteDragOver(e) {
-    // Only allow dropping notes on notes
-    if (draggedType !== 'note') {
-        return;
-    }
-    
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    
-    const target = e.currentTarget;
-    target.classList.add('drop-target');
-}
-
-async function handleNoteDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const target = e.currentTarget;
-    target.classList.remove('drop-target');
-    
-    if (!draggedItem || draggedType !== 'note') return;
-    
-    const draggedNoteId = draggedItem.getAttribute('data-note-id');
-    const targetNoteId = target.getAttribute('data-note-id');
-    
-    if (draggedNoteId === targetNoteId) return; // Can't drop on self
-    
-    const draggedNote = notes.find(n => n.id === draggedNoteId);
-    const targetNote = notes.find(n => n.id === targetNoteId);
-    
-    if (!draggedNote || !targetNote) return;
-    
-    // Move dragged note to same folder as target
-    draggedNote.folderId = targetNote.folderId;
-    
-    // Reorder: place dragged note right after target note
-    const sameFolderNotes = notes
-        .filter(n => n.folderId === targetNote.folderId)
-        .sort((a, b) => (a.order || 0) - (b.order || 0));
-    
-    const targetIndex = sameFolderNotes.findIndex(n => n.id === targetNoteId);
-    
-    // Calculate new order values
-    if (targetIndex >= 0) {
-        const targetOrder = targetNote.order || 0;
-        const nextNote = sameFolderNotes[targetIndex + 1];
-        const nextOrder = nextNote ? (nextNote.order || 0) : (targetOrder + 1000);
-        
-        // Place dragged note between target and next note
-        draggedNote.order = (targetOrder + nextOrder) / 2;
-    }
-    
-    draggedNote.modified = new Date().toISOString();
-    await saveNote(draggedNote);
-    
-    renderFileExplorer();
-    showToast('Note reordered');
+    // Only clear if truly leaving the element (not entering a child)
+    const related = e.relatedTarget;
+    if (related && e.currentTarget.contains(related)) return;
+    // Don't clear — let the next dragover on a new element clear it
+    // This prevents flicker when moving between child elements
 }
 
 async function handleDrop(e) {
     e.preventDefault();
     e.stopPropagation();
-    
-    const target = e.currentTarget;
-    const isReorder = target.classList.contains('drop-target-reorder');
-    target.classList.remove('drop-target');
-    target.classList.remove('drop-target-reorder');
-    
-    if (!draggedItem) return;
-    
-    const targetFolderId = target.getAttribute('data-folder-id');
-    
+
+    if (!draggedItem || !_pendingDrop) {
+        _clearDropState();
+        return;
+    }
+
+    const drop = _pendingDrop;
+    _clearDropState();
+
     if (draggedType === 'note') {
-        const noteId = draggedItem.getAttribute('data-note-id');
-        const note = notes.find(n => n.id === noteId);
-        
-        if (note) {
-            // Move note to folder (or keep in same folder)
-            note.folderId = targetFolderId;
-            note.modified = new Date().toISOString();
-            await saveNote(note);
-            
-            // Expand target folder if collapsed
-            const targetFolder = folders.find(f => f.id === targetFolderId);
-            if (targetFolder && targetFolder.collapsed) {
-                targetFolder.collapsed = false;
-                await saveFolder(targetFolder);
-            }
-            
-            renderFileExplorer();
-            if (currentNoteId === note.id) {
-                updateBreadcrumb(note);
-            }
-            showToast('Note moved');
-        }
+        await _dropNote(drop);
     } else if (draggedType === 'folder') {
-        const draggedFolderId = draggedItem.getAttribute('data-folder-id');
-        const draggedFolder = folders.find(f => f.id === draggedFolderId);
+        await _dropFolder(drop);
+    }
+}
+
+async function _dropNote(drop) {
+    const noteId = draggedItem.getAttribute('data-note-id');
+    const note = notes.find(n => n.id === noteId);
+    if (!note) return;
+
+    if (drop.zone === 'into') {
+        // Move note into folder
+        const targetFolderId = drop.targetId;
+        if (note.folderId === targetFolderId) return;
+        note.folderId = targetFolderId;
+        note.modified = new Date().toISOString();
+
         const targetFolder = folders.find(f => f.id === targetFolderId);
-        
-        if (draggedFolder && targetFolder) {
-            // Don't allow dropping a folder into itself or its children
-            if (draggedFolderId === targetFolderId || isChildFolder(targetFolderId, draggedFolderId)) {
-                showToast('Cannot move folder into itself or its children');
-                return;
-            }
-            
-            if (isReorder) {
-                // Reorder: place dragged folder right after target folder at same level
-                draggedFolder.parentFolderId = targetFolder.parentFolderId;
-                
-                // Get all folders at the same level
-                const sameLevelFolders = folders
-                    .filter(f => f.parentFolderId === targetFolder.parentFolderId)
-                    .sort((a, b) => (a.order || 0) - (b.order || 0));
-                
-                const targetIndex = sameLevelFolders.findIndex(f => f.id === targetFolderId);
-                
-                if (targetIndex >= 0) {
-                    const targetOrder = targetFolder.order || 0;
-                    const nextFolder = sameLevelFolders[targetIndex + 1];
-                    const nextOrder = nextFolder ? (nextFolder.order || 0) : (targetOrder + 1000);
-                    
-                    // Place dragged folder between target and next folder
-                    draggedFolder.order = (targetOrder + nextOrder) / 2;
-                }
-                
-                await saveFolder(draggedFolder);
-                renderFileExplorer();
-                showToast('Folder reordered');
+        if (targetFolder && targetFolder.collapsed) {
+            targetFolder.collapsed = false;
+            await saveFolder(targetFolder);
+        }
+
+        await saveNote(note);
+        renderFileExplorer();
+        if (currentNoteId === note.id) updateBreadcrumb(note);
+        showToast('Note moved into folder');
+
+    } else {
+        // Reorder note before/after target item
+        const targetEl = drop.targetEl;
+        const targetNoteId = targetEl.getAttribute('data-note-id');
+        const targetFolderId = targetEl.getAttribute('data-folder-id');
+
+        // Determine target context (what folder and what the adjacent items are)
+        let newFolderId;
+        if (targetNoteId) {
+            const targetNote = notes.find(n => n.id === targetNoteId);
+            newFolderId = targetNote ? targetNote.folderId : null;
+        } else if (targetFolderId) {
+            // Dropping next to a folder — go to same parent level
+            const targetFolder = folders.find(f => f.id === targetFolderId);
+            newFolderId = targetFolder ? targetFolder.parentFolderId : null;
+        } else {
+            newFolderId = null;
+        }
+
+        note.folderId = newFolderId;
+        note.order = _calcOrderForNoteAdjacentTo(targetEl, drop.zone, newFolderId);
+        note.modified = new Date().toISOString();
+        await saveNote(note);
+        renderFileExplorer();
+        if (currentNoteId === note.id) updateBreadcrumb(note);
+        showToast('Note moved');
+    }
+}
+
+async function _dropFolder(drop) {
+    const folderId = draggedItem.getAttribute('data-folder-id');
+    const folder = folders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    if (drop.zone === 'into') {
+        // Nest folder inside target folder
+        const targetFolderId = drop.targetId;
+        if (folderId === targetFolderId || isChildFolder(targetFolderId, folderId)) return;
+
+        folder.parentFolderId = targetFolderId;
+        folder.order = Date.now();
+
+        const targetFolder = folders.find(f => f.id === targetFolderId);
+        if (targetFolder && targetFolder.collapsed) {
+            targetFolder.collapsed = false;
+            await saveFolder(targetFolder);
+        }
+
+        await saveFolder(folder);
+        renderFileExplorer();
+        showToast('Folder moved inside folder');
+
+    } else {
+        // Reorder folder before/after target
+        const targetEl = drop.targetEl;
+        const targetFolderId = targetEl.getAttribute('data-folder-id');
+        const targetNoteId = targetEl.getAttribute('data-note-id');
+
+        let newParentFolderId;
+        if (targetFolderId) {
+            const targetFolder = folders.find(f => f.id === targetFolderId);
+            newParentFolderId = targetFolder ? targetFolder.parentFolderId : null;
+        } else if (targetNoteId) {
+            const targetNote = notes.find(n => n.id === targetNoteId);
+            newParentFolderId = targetNote ? targetNote.folderId : null;
+        } else {
+            newParentFolderId = null;
+        }
+
+        // Prevent dropping into own subtree
+        if (newParentFolderId && isChildFolder(newParentFolderId, folderId)) return;
+
+        folder.parentFolderId = newParentFolderId;
+        folder.order = _calcOrderForFolderAdjacentTo(targetEl, drop.zone, newParentFolderId);
+
+        await saveFolder(folder);
+        renderFileExplorer();
+        showToast('Folder moved');
+    }
+}
+
+// Calculate order value for a note placed before/after a target element
+function _calcOrderForNoteAdjacentTo(targetEl, zone, folderId) {
+    // Get all items in the same context rendered in DOM order
+    const explorer = document.getElementById('fileExplorer');
+    const allItems = Array.from(explorer.querySelectorAll('[data-note-id], [data-folder-id]'));
+    const targetIdx = allItems.indexOf(targetEl);
+
+    // Find the rendered siblings that are notes in same folder
+    const folderNotes = notes
+        .filter(n => n.folderId === folderId)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    if (folderNotes.length === 0) return Date.now();
+
+    const targetNoteId = targetEl.getAttribute('data-note-id');
+    if (targetNoteId) {
+        const tIdx = folderNotes.findIndex(n => n.id === targetNoteId);
+        if (zone === 'before') {
+            const prev = folderNotes[tIdx - 1];
+            const cur = folderNotes[tIdx];
+            return prev ? ((prev.order + cur.order) / 2) : (cur.order - 1000);
+        } else {
+            const cur = folderNotes[tIdx];
+            const next = folderNotes[tIdx + 1];
+            return next ? ((cur.order + next.order) / 2) : (cur.order + 1000);
+        }
+    }
+
+    // Dropping next to a folder — place at start or end of folder's notes
+    if (zone === 'before') {
+        return (folderNotes[0].order || 0) - 1000;
+    } else {
+        return (folderNotes[folderNotes.length - 1].order || 0) + 1000;
+    }
+}
+
+// Calculate order value for a folder placed before/after a target element
+function _calcOrderForFolderAdjacentTo(targetEl, zone, parentFolderId) {
+    const siblingFolders = folders
+        .filter(f => f.parentFolderId === parentFolderId)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    const targetFolderId = targetEl.getAttribute('data-folder-id');
+    if (targetFolderId && siblingFolders.length > 0) {
+        const tIdx = siblingFolders.findIndex(f => f.id === targetFolderId);
+        if (tIdx >= 0) {
+            if (zone === 'before') {
+                const prev = siblingFolders[tIdx - 1];
+                const cur = siblingFolders[tIdx];
+                return prev ? ((prev.order + cur.order) / 2) : (cur.order - 1000);
             } else {
-                // Nest: move folder into target folder (Shift key was held)
-                draggedFolder.parentFolderId = targetFolderId;
-                await saveFolder(draggedFolder);
-                
-                // Expand target folder if collapsed
-                if (targetFolder.collapsed) {
-                    targetFolder.collapsed = false;
-                    await saveFolder(targetFolder);
-                }
-                
-                renderFileExplorer();
-                showToast('Folder nested');
+                const cur = siblingFolders[tIdx];
+                const next = siblingFolders[tIdx + 1];
+                return next ? ((cur.order + next.order) / 2) : (cur.order + 1000);
             }
         }
     }
+
+    // Fallback: place at end
+    if (siblingFolders.length === 0) return Date.now();
+    return (siblingFolders[siblingFolders.length - 1].order || 0) + 1000;
 }
 
 function isChildFolder(childId, parentId) {
     let currentFolder = folders.find(f => f.id === childId);
-    
     while (currentFolder && currentFolder.parentFolderId) {
-        if (currentFolder.parentFolderId === parentId) {
-            return true;
-        }
+        if (currentFolder.parentFolderId === parentId) return true;
         currentFolder = folders.find(f => f.id === currentFolder.parentFolderId);
     }
-    
     return false;
 }
 
 function handleRootDragOver(e) {
-    // Only handle if dragging over the explorer background (not over a folder/note)
     if (e.target.id === 'fileExplorer' || e.target.classList.contains('file-explorer')) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
+        // Show indicator at the very end of the list
+        _clearDropState();
+        const indicator = _getOrCreateDropIndicator();
+        const explorer = document.getElementById('fileExplorer');
+        explorer.appendChild(indicator);
+        _pendingDrop = { zone: 'root-end', targetEl: null, targetId: null, targetKind: null };
     }
 }
 
 async function handleRootDrop(e) {
-    // Only handle if dropping on the explorer background (not on a folder/note)
-    if (e.target.id !== 'fileExplorer' && !e.target.classList.contains('file-explorer')) {
-        return;
-    }
-    
+    if (e.target.id !== 'fileExplorer' && !e.target.classList.contains('file-explorer')) return;
+
     e.preventDefault();
     e.stopPropagation();
-    
+
+    _clearDropState();
     if (!draggedItem) return;
-    
+
     if (draggedType === 'note') {
         const noteId = draggedItem.getAttribute('data-note-id');
         const note = notes.find(n => n.id === noteId);
-        
         if (note) {
-            // Move note to root (no folder)
             note.folderId = null;
+            note.order = Date.now();
             note.modified = new Date().toISOString();
             await saveNote(note);
-            
             renderFileExplorer();
-            if (currentNoteId === note.id) {
-                updateBreadcrumb(note);
-            }
+            if (currentNoteId === note.id) updateBreadcrumb(note);
             showToast('Note moved to root');
         }
     } else if (draggedType === 'folder') {
         const folderId = draggedItem.getAttribute('data-folder-id');
         const folder = folders.find(f => f.id === folderId);
-        
         if (folder) {
-            // Move folder to root
             folder.parentFolderId = null;
+            folder.order = Date.now();
             await saveFolder(folder);
-            
             renderFileExplorer();
             showToast('Folder moved to root');
         }
@@ -1128,7 +1192,6 @@ let _previewEditing = false;
 let _previewSyncTimer = null;
 
 function updatePreview() {
-    if (currentEditMode === 'edit') return;
     // Don't reset the DOM while the user is actively typing in preview mode
     if (_previewEditing) return;
     
@@ -1630,9 +1693,9 @@ function createNoteElement(note, inFolder, folderId) {
     // Drag and drop event listeners
     div.addEventListener('dragstart', handleDragStart);
     div.addEventListener('dragend', handleDragEnd);
-    div.addEventListener('dragover', handleNoteDragOver);
+    div.addEventListener('dragover', handleDragOver);
     div.addEventListener('dragleave', handleDragLeave);
-    div.addEventListener('drop', handleNoteDrop);
+    div.addEventListener('drop', handleDrop);
     
     const icon = document.createElement('span');
     icon.className = 'icon';
@@ -2026,6 +2089,7 @@ function switchEditorTab(eventOrMode, mode) {
             setTimeout(() => {
                 editor.refresh();
                 applyEditorScrollFraction(scrollFraction);
+                if (searchState.query) performSearch();
             }, 10);
         }
     } else if (actualMode === 'preview') {
@@ -2040,7 +2104,10 @@ function switchEditorTab(eventOrMode, mode) {
         _previewEditing = false;
         updatePreview();
         _initPreviewEditing();
-        setTimeout(() => applyPreviewScrollFraction(scrollFraction), 20);
+        setTimeout(() => {
+            applyPreviewScrollFraction(scrollFraction);
+            if (searchState.query) performSearch();
+        }, 20);
     } else if (actualMode === 'split') {
         // Split mode: read-only preview
         _previewEditing = false;
@@ -2702,6 +2769,18 @@ window.searchByTag = searchByTag;
 
 /* ========== SEARCH AND REPLACE ========== */
 
+function updateNoteInMemory() {
+    if (!currentNoteId || !editor) return;
+    const note = notes.find(n => n.id === currentNoteId);
+    if (!note) return;
+    note.content = editor.getValue();
+    note.modified = new Date().toISOString();
+    note.tags = extractTags(note.content);
+    note.links = extractLinks(note.content);
+    updatePreview();
+    resetAutoSaveTimer();
+}
+
 // Search state
 let searchState = {
     query: '',
@@ -2711,7 +2790,9 @@ let searchState = {
     matchCase: false,
     wholeWord: false,
     useRegex: false,
-    markers: []
+    markers: [],
+    _previewFlatText: '',
+    _previewNodeMap: null
 };
 
 function openSearchPanel(showReplace = false) {
@@ -2766,7 +2847,18 @@ function toggleReplaceRow() {
 function closeSearchPanel() {
     const panel = document.getElementById('searchReplacePanel');
     panel.classList.remove('active');
+    
+    // Clear input fields
+    const searchInput = document.getElementById('searchTextInput');
+    const replaceInput = document.getElementById('replaceTextInput');
+    if (searchInput) searchInput.value = '';
+    if (replaceInput) replaceInput.value = '';
+    
+    // Reset query state and clear all highlights
+    searchState.query = '';
+    searchState.replaceText = '';
     clearSearchHighlights();
+    updateSearchCount();
 }
 
 function toggleMatchCase() {
@@ -2797,8 +2889,6 @@ function toggleRegex() {
 }
 
 function performSearch() {
-    if (!editor) return;
-    
     const searchInput = document.getElementById('searchTextInput');
     searchState.query = searchInput.value;
     
@@ -2808,10 +2898,7 @@ function performSearch() {
         updateSearchCount();
         return;
     }
-    
-    const doc = editor.getDoc();
-    const content = doc.getValue();
-    
+
     // Build search pattern
     let pattern;
     try {
@@ -2825,39 +2912,155 @@ function performSearch() {
             pattern = new RegExp(escapedQuery, searchState.matchCase ? 'g' : 'gi');
         }
     } catch (e) {
-        // Invalid regex
         updateSearchCount();
         return;
     }
+
+    if (currentEditMode === 'preview') {
+        _performSearchInPreview(pattern);
+    } else {
+        _performSearchInEditor(pattern);
+    }
+}
+
+function _performSearchInEditor(pattern) {
+    if (!editor) return;
+    const doc = editor.getDoc();
+    const content = doc.getValue();
     
-    // Find all matches
     searchState.matches = [];
     let match;
     while ((match = pattern.exec(content)) !== null) {
         const pos = doc.posFromIndex(match.index);
         const endPos = doc.posFromIndex(match.index + match[0].length);
         searchState.matches.push({ from: pos, to: endPos, text: match[0] });
-        
-        // Prevent infinite loop with zero-width matches
-        if (match.index === pattern.lastIndex) {
-            pattern.lastIndex++;
-        }
+        if (match.index === pattern.lastIndex) pattern.lastIndex++;
     }
     
-    // Set to first match if we don't have a current index
     if (searchState.matches.length > 0 && searchState.currentMatchIndex === -1) {
         searchState.currentMatchIndex = 0;
     }
-    
-    // If current index is out of bounds, reset it
     if (searchState.currentMatchIndex >= searchState.matches.length) {
         searchState.currentMatchIndex = searchState.matches.length > 0 ? 0 : -1;
     }
     
-    // Highlight all matches without jumping
     highlightMatchesOnly();
-    
     updateSearchCount();
+}
+
+function _performSearchInPreview(pattern) {
+    const preview = document.getElementById('markdownPreview');
+    if (!preview) { updateSearchCount(); return; }
+
+    // Collect all text nodes
+    const textNodes = [];
+    const walker = document.createTreeWalker(preview, NodeFilter.SHOW_TEXT, null);
+    let node;
+    while ((node = walker.nextNode())) textNodes.push(node);
+
+    // Build flat text + offset map
+    let flatText = '';
+    const nodeMap = []; // {node, start, end}
+    for (const tn of textNodes) {
+        const start = flatText.length;
+        flatText += tn.textContent;
+        nodeMap.push({ node: tn, start, end: start + tn.textContent.length });
+    }
+
+    // Find matches
+    searchState.matches = [];
+    searchState._previewFlatText = flatText;
+    searchState._previewNodeMap = nodeMap;
+    let match;
+    while ((match = pattern.exec(flatText)) !== null) {
+        searchState.matches.push({ index: match.index, length: match[0].length, text: match[0] });
+        if (match.index === pattern.lastIndex) pattern.lastIndex++;
+    }
+
+    if (searchState.matches.length > 0 && searchState.currentMatchIndex === -1) {
+        searchState.currentMatchIndex = 0;
+    }
+    if (searchState.currentMatchIndex >= searchState.matches.length) {
+        searchState.currentMatchIndex = searchState.matches.length > 0 ? 0 : -1;
+    }
+
+    _highlightPreviewMatches();
+    updateSearchCount();
+}
+
+function _highlightPreviewMatches() {
+    // Re-render preview to clear old highlights, then apply new ones
+    const preview = document.getElementById('markdownPreview');
+    if (!preview || !searchState._previewNodeMap) return;
+
+    // Wrap each match in a <mark> span
+    // Re-collect text nodes after potential DOM changes
+    _clearPreviewHighlights();
+
+    const nodeMap = searchState._previewNodeMap;
+    if (!nodeMap) return;
+
+    // Apply marks in reverse order to preserve offsets
+    const matches = [...searchState.matches];
+    for (let mi = matches.length - 1; mi >= 0; mi--) {
+        const m = matches[mi];
+        _wrapPreviewMatch(m.index, m.length, mi === searchState.currentMatchIndex, nodeMap);
+    }
+}
+
+function _wrapPreviewMatch(flatIndex, length, isCurrent, nodeMap) {
+    // Find the text node containing flatIndex
+    const startNode = nodeMap.find(n => flatIndex >= n.start && flatIndex < n.end);
+    if (!startNode) return;
+
+    const localOffset = flatIndex - startNode.start;
+    const tn = startNode.node;
+    if (!tn.parentNode) return;
+
+    const before = tn.textContent.slice(0, localOffset);
+    const matchText = tn.textContent.slice(localOffset, localOffset + Math.min(length, tn.textContent.length - localOffset));
+    const after = tn.textContent.slice(localOffset + matchText.length);
+
+    const mark = document.createElement('mark');
+    mark.className = 'preview-search-match' + (isCurrent ? ' current' : '');
+    mark.textContent = matchText;
+
+    const frag = document.createDocumentFragment();
+    if (before) frag.appendChild(document.createTextNode(before));
+    frag.appendChild(mark);
+    if (after) frag.appendChild(document.createTextNode(after));
+
+    tn.parentNode.replaceChild(frag, tn);
+
+    // Update the node map for subsequent calls (since we replaced the node)
+    startNode.node = mark.nextSibling || mark; // point to after text
+}
+
+function _clearPreviewHighlights() {
+    const preview = document.getElementById('markdownPreview');
+    if (!preview) return;
+    const marks = preview.querySelectorAll('mark.preview-search-match');
+    marks.forEach(mark => {
+        const parent = mark.parentNode;
+        if (parent) {
+            parent.replaceChild(document.createTextNode(mark.textContent), mark);
+            parent.normalize();
+        }
+    });
+    // Rebuild node map after clearing
+    const textNodes = [];
+    const walker = document.createTreeWalker(preview, NodeFilter.SHOW_TEXT, null);
+    let node;
+    let flatText = '';
+    const nodeMap = [];
+    while ((node = walker.nextNode())) {
+        const start = flatText.length;
+        flatText += node.textContent;
+        nodeMap.push({ node, start, end: start + node.textContent.length });
+        textNodes.push(node);
+    }
+    searchState._previewFlatText = flatText;
+    searchState._previewNodeMap = nodeMap;
 }
 
 function highlightMatchesOnly() {
@@ -2874,10 +3077,25 @@ function highlightMatchesOnly() {
 }
 
 function clearSearchHighlights() {
+    // Clear editor markers
     searchState.markers.forEach(marker => marker.clear());
     searchState.markers = [];
     searchState.matches = [];
     searchState.currentMatchIndex = -1;
+    // Clear preview highlights
+    const preview = document.getElementById('markdownPreview');
+    if (preview) {
+        const marks = preview.querySelectorAll('mark.preview-search-match');
+        marks.forEach(mark => {
+            const parent = mark.parentNode;
+            if (parent) {
+                parent.replaceChild(document.createTextNode(mark.textContent), mark);
+                parent.normalize();
+            }
+        });
+    }
+    searchState._previewFlatText = '';
+    searchState._previewNodeMap = null;
 }
 
 function updateSearchCount() {
@@ -2890,22 +3108,33 @@ function updateSearchCount() {
 }
 
 function jumpToMatch(index) {
-    if (!editor || searchState.matches.length === 0) return;
-    
-    // Update marker classes
-    searchState.markers.forEach((marker, i) => {
-        marker.clear();
-        const match = searchState.matches[i];
-        const className = i === index ? 'CodeMirror-search-match current' : 'CodeMirror-search-match';
-        searchState.markers[i] = editor.getDoc().markText(match.from, match.to, { className });
-    });
-    
-    const match = searchState.matches[index];
-    editor.scrollIntoView(match.from, 100);
-    editor.setSelection(match.from, match.to);
-    editor.focus();
-    
+    if (searchState.matches.length === 0) return;
     searchState.currentMatchIndex = index;
+    
+    if (currentEditMode === 'preview') {
+        // Re-render highlights with new current
+        _highlightPreviewMatches();
+        // Scroll the current mark into view
+        const preview = document.getElementById('markdownPreview');
+        if (preview) {
+            const current = preview.querySelector('mark.preview-search-match.current');
+            if (current) current.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+    } else {
+        if (!editor) return;
+        // Update marker classes
+        searchState.markers.forEach((marker, i) => {
+            marker.clear();
+            const match = searchState.matches[i];
+            const className = i === index ? 'CodeMirror-search-match current' : 'CodeMirror-search-match';
+            searchState.markers[i] = editor.getDoc().markText(match.from, match.to, { className });
+        });
+        const match = searchState.matches[index];
+        editor.scrollIntoView(match.from, 100);
+        editor.setSelection(match.from, match.to);
+        editor.focus();
+    }
+    
     updateSearchCount();
 }
 
@@ -2934,6 +3163,11 @@ function findPrevious() {
 }
 
 function replaceOne() {
+    if (currentEditMode === 'preview') {
+        // In preview mode, switch to edit mode, do replacement, switch back
+        _replaceInEditorContent(false);
+        return;
+    }
     if (!editor || searchState.currentMatchIndex < 0) return;
     
     const replaceInput = document.getElementById('replaceTextInput');
@@ -2942,18 +3176,17 @@ function replaceOne() {
     const doc = editor.getDoc();
     const match = searchState.matches[searchState.currentMatchIndex];
     
-    // Replace the current match
     doc.replaceRange(searchState.replaceText, match.from, match.to);
-    
-    // Mark as changed
     hasUnsavedChanges = true;
     updateNoteInMemory();
-    
-    // Re-perform search to update positions
     performSearch();
 }
 
 function replaceAll() {
+    if (currentEditMode === 'preview') {
+        _replaceInEditorContent(true);
+        return;
+    }
     if (!editor || searchState.matches.length === 0) return;
     
     const replaceInput = document.getElementById('replaceTextInput');
@@ -2962,22 +3195,65 @@ function replaceAll() {
     const doc = editor.getDoc();
     const replacementCount = searchState.matches.length;
     
-    // Replace from end to beginning to maintain positions
     for (let i = searchState.matches.length - 1; i >= 0; i--) {
         const match = searchState.matches[i];
         doc.replaceRange(searchState.replaceText, match.from, match.to);
     }
     
-    // Mark as changed
     hasUnsavedChanges = true;
     updateNoteInMemory();
-    
-    // Clear search and show result
     clearSearchHighlights();
     searchState.query = '';
     updateSearchCount();
     
     showToast(`Replaced ${replacementCount} occurrence${replacementCount !== 1 ? 's' : ''}`);
+}
+
+function _replaceInEditorContent(replaceAll) {
+    // For preview mode: perform replacements on the underlying editor content
+    if (!editor || !searchState.query) return;
+    const replaceInput = document.getElementById('replaceTextInput');
+    const replaceText = replaceInput.value;
+    
+    let pattern;
+    try {
+        if (searchState.useRegex) {
+            pattern = new RegExp(searchState.query, (searchState.matchCase ? 'g' : 'gi'));
+        } else {
+            let q = searchState.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            if (searchState.wholeWord) q = '\\b' + q + '\\b';
+            pattern = new RegExp(q, searchState.matchCase ? 'g' : 'gi');
+        }
+    } catch(e) { return; }
+
+    const content = editor.getValue();
+    let count = 0;
+    let newContent;
+    if (replaceAll) {
+        newContent = content.replace(pattern, () => { count++; return replaceText; });
+    } else {
+        // Replace first match after currentMatchIndex (use match index from flat preview text)
+        let matchIdx = 0;
+        newContent = content.replace(pattern, (m) => {
+            if (matchIdx++ === Math.max(0, searchState.currentMatchIndex)) {
+                count++;
+                return replaceText;
+            }
+            return m;
+        });
+    }
+    
+    if (count > 0) {
+        _settingEditorValue = true;
+        editor.setValue(newContent);
+        _settingEditorValue = false;
+        hasUnsavedChanges = true;
+        updateNoteInMemory();
+        updatePreview();
+        // Re-run search after preview updates
+        setTimeout(() => performSearch(), 50);
+        if (replaceAll) showToast(`Replaced ${count} occurrence${count !== 1 ? 's' : ''}`);
+    }
 }
 
 // Event listeners for search input

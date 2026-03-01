@@ -285,15 +285,40 @@ body {
     cursor: grabbing;
 }
 
-.folder-item.drop-target {
+/* Drop line indicator */
+.dnd-drop-indicator {
+    height: 2px;
     background: var(--accent-primary);
-    color: white;
-    border: 2px dashed var(--accent-secondary);
+    border-radius: 2px;
+    margin: 1px 4px;
+    pointer-events: none;
+    position: relative;
 }
 
-.folder-item.drop-target-reorder {
-    border-bottom: 3px solid var(--accent-primary);
-    margin-bottom: 3px;
+.dnd-drop-indicator::before {
+    content: '';
+    position: absolute;
+    left: -4px;
+    top: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+}
+
+/* Nest-into highlight */
+.folder-item.dnd-nest-target {
+    background: var(--accent-primary) !important;
+    color: white !important;
+    border-radius: 4px;
+    outline: 2px solid var(--accent-secondary);
+    outline-offset: -2px;
+}
+
+.folder-item.dnd-nest-target .icon,
+.folder-item.dnd-nest-target .item-name,
+.folder-item.dnd-nest-target .folder-toggle {
+    color: white !important;
 }
 
 .file-item.drop-target {
@@ -1589,6 +1614,22 @@ body {
     background-color: rgba(255, 165, 0, 0.6);
     border-bottom: 2px solid rgba(255, 140, 0, 1);
     box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.3);
+}
+
+/* Preview mode search highlighting */
+mark.preview-search-match {
+    background-color: rgba(255, 255, 0, 0.5);
+    border-bottom: 2px solid rgba(255, 165, 0, 0.8);
+    border-radius: 2px;
+    color: inherit;
+}
+
+mark.preview-search-match.current {
+    background-color: rgba(255, 165, 0, 0.65);
+    border-bottom: 2px solid rgba(255, 140, 0, 1);
+    box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.3);
+    border-radius: 2px;
+    color: inherit;
 }
 
 #renameInput {
