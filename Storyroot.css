@@ -1821,7 +1821,7 @@ body.distraction-free .search-replace-panel.active {
     box-shadow: var(--shadow-md);
 }
 
-/* Floating exit hint — appears at bottom-right */
+/* Floating exit hint — invisible, only shown as a CSS pseudo for discoverability */
 body.distraction-free::after {
     content: 'Press Esc to exit focus mode';
     position: fixed;
@@ -1829,12 +1829,65 @@ body.distraction-free::after {
     right: 24px;
     font-size: 11px;
     color: var(--text-tertiary);
-    opacity: 0;
+    opacity: 0.06;
     pointer-events: none;
-    transition: opacity 0.4s ease;
     z-index: 300;
 }
 
-body.distraction-free:hover::after {
+/* ========== DISTRACTION-FREE STATS BADGE ========== */
+
+.df-stats-badge {
+    display: none; /* hidden by default */
+}
+
+body.distraction-free .df-stats-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 300;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 6px 18px;
+    box-shadow: var(--shadow-sm);
+    opacity: 0.06;
+    transition: opacity 0.25s ease;
+    pointer-events: auto;
+    white-space: nowrap;
+}
+
+body.distraction-free .df-stats-badge:hover {
     opacity: 1;
+    box-shadow: var(--shadow-md);
+}
+
+.df-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.df-stat-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.df-stat-label {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.df-stat-sep {
+    width: 1px;
+    height: 14px;
+    background: var(--border-color);
+    opacity: 0.6;
 }

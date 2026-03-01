@@ -366,6 +366,9 @@ function initializeCodeMirror() {
             updatePreview();
             resetAutoSaveTimer();
         }
+        if (document.body.classList.contains('distraction-free')) {
+            updateDFStats();
+        }
     });
 }
 
@@ -2582,9 +2585,12 @@ function enterDistractionFree() {
 
     document.body.classList.add('distraction-free');
 
-    // Update button icon to "exit" icon
+    // Update button title
     const btn = document.getElementById('distractionFreeBtn');
     if (btn) btn.title = 'Exit Distraction-Free (Esc or F11)';
+
+    // Seed the stats badge immediately
+    updateDFStats();
 
     // Refresh editor so CodeMirror reflows to new size
     if (editor) setTimeout(() => editor.refresh(), 50);
@@ -2604,6 +2610,23 @@ function exitDistractionFree() {
     if (btn) btn.title = 'Distraction-Free Mode (F11)';
 
     if (editor) setTimeout(() => editor.refresh(), 50);
+}
+
+function updateDFStats() {
+    const badge = document.getElementById('dfStatsBadge');
+    if (!badge) return;
+
+    const text = editor ? editor.getValue() : '';
+
+    const words = text.trim() === '' ? 0 : text.trim().split(/\s+/).filter(w => w.length > 0).length;
+    const chars = text.length;
+    const lines = text === '' ? 0 : text.split('\n').length;
+    const readTime = Math.max(1, Math.round(words / 200)); // ~200 wpm
+
+    document.getElementById('dfWords').textContent = words.toLocaleString();
+    document.getElementById('dfChars').textContent = chars.toLocaleString();
+    document.getElementById('dfLines').textContent = lines.toLocaleString();
+    document.getElementById('dfReadTime').textContent = readTime;
 }
 
 window.toggleDistractionFree = toggleDistractionFree;
