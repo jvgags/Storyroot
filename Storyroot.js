@@ -1597,12 +1597,21 @@ function createFolderElement(folder) {
     }
     
     // Drag and drop event listeners
+    div.setAttribute('draggable', 'false');
     div.addEventListener('dragstart', handleDragStart);
     div.addEventListener('dragend', handleDragEnd);
     div.addEventListener('dragover', handleDragOver);
     div.addEventListener('dragleave', handleDragLeave);
     div.addEventListener('drop', handleDrop);
-    
+
+    // Drag handle — only this enables dragging
+    const dragHandle = document.createElement('span');
+    dragHandle.className = 'drag-handle';
+    dragHandle.textContent = '⠿';
+    dragHandle.title = 'Drag to reorder';
+    dragHandle.addEventListener('mouseenter', () => div.setAttribute('draggable', 'true'));
+    dragHandle.addEventListener('mouseleave', () => div.setAttribute('draggable', 'false'));
+
     const toggle = document.createElement('span');
     toggle.className = `folder-toggle ${folder.collapsed ? '' : 'open'}`;
     toggle.textContent = '▶';
@@ -1622,11 +1631,19 @@ function createFolderElement(folder) {
     const icon = document.createElement('span');
     icon.className = 'icon';
     icon.textContent = '📁';
-    
+    icon.style.cursor = 'pointer';
+    icon.addEventListener('mousedown', (e) => e.stopPropagation());
+    icon.addEventListener('dragstart', (e) => { e.preventDefault(); e.stopPropagation(); });
+    icon.onclick = (e) => { e.stopPropagation(); toggleFolder(folder.id); };
+
     const name = document.createElement('span');
     name.className = 'item-name';
     name.textContent = folder.name;
     name.title = folder.name;
+    name.style.cursor = 'pointer';
+    name.addEventListener('mousedown', (e) => e.stopPropagation());
+    name.addEventListener('dragstart', (e) => { e.preventDefault(); e.stopPropagation(); });
+    name.onclick = (e) => { e.stopPropagation(); toggleFolder(folder.id); };
     
     // Ellipsis button to show context menu
     const ellipsisBtn = document.createElement('button');
@@ -1683,6 +1700,7 @@ function createFolderElement(folder) {
         </button>
     `;
     
+    div.appendChild(dragHandle);
     div.appendChild(toggle);
     div.appendChild(icon);
     div.appendChild(name);
@@ -1696,7 +1714,7 @@ function createNoteElement(note, inFolder, folderId) {
     const div = document.createElement('div');
     div.className = `file-item ${currentNoteId === note.id ? 'active' : ''}`;
     div.setAttribute('data-note-id', note.id);
-    div.setAttribute('draggable', 'true');
+    div.setAttribute('draggable', 'false');
     
     // Add indentation for notes in folders
     if (inFolder && folderId) {
@@ -1712,6 +1730,14 @@ function createNoteElement(note, inFolder, folderId) {
     div.addEventListener('dragover', handleDragOver);
     div.addEventListener('dragleave', handleDragLeave);
     div.addEventListener('drop', handleDrop);
+
+    // Drag handle — only this enables dragging
+    const noteDragHandle = document.createElement('span');
+    noteDragHandle.className = 'drag-handle';
+    noteDragHandle.textContent = '⠿';
+    noteDragHandle.title = 'Drag to reorder';
+    noteDragHandle.addEventListener('mouseenter', () => div.setAttribute('draggable', 'true'));
+    noteDragHandle.addEventListener('mouseleave', () => div.setAttribute('draggable', 'false'));
     
     const icon = document.createElement('span');
     icon.className = 'icon';
@@ -1774,6 +1800,7 @@ function createNoteElement(note, inFolder, folderId) {
         </button>
     `;
     
+    div.appendChild(noteDragHandle);
     div.appendChild(icon);
     div.appendChild(name);
     div.appendChild(ellipsisBtn);

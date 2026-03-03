@@ -327,17 +327,35 @@ body {
 }
 
 .folder-item[draggable="true"], .file-item[draggable="true"] {
-    cursor: grab;
+    cursor: default;
 }
 
 .folder-item[draggable="true"]:active, .file-item[draggable="true"]:active {
     cursor: grabbing;
 }
 
+.drag-handle {
+    cursor: grab;
+    color: var(--text-muted, #aaa);
+    font-size: 14px;
+    padding: 0 2px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+    user-select: none;
+}
+
+.folder-item:hover .drag-handle,
+.file-item:hover .drag-handle {
+    opacity: 1;
+}
+
 /* Prevent grab cursor on interactive elements */
 .folder-toggle,
 .item-ellipsis-btn,
-.item-actions {
+.item-actions,
+.folder-item .icon,
+.folder-item .item-name {
     cursor: pointer !important;
 }
 
