@@ -358,6 +358,19 @@ function initializeCodeMirror() {
         editor.getWrapperElement().style.fontSize = settings.fontSize + 'px';
     }
     
+    // Handle paste: convert HTML clipboard content to Markdown
+    editor.on('paste', (cm, e) => {
+        const clipboardData = e.clipboardData || window.clipboardData;
+        if (!clipboardData) return;
+
+        const html = clipboardData.getData('text/html');
+        if (!html) return; // No HTML — let CodeMirror handle plain-text paste normally
+
+        e.preventDefault();
+        const markdown = htmlToMarkdown(html);
+        cm.getDoc().replaceSelection(markdown);
+    });
+
     // Listen for changes
     editor.on('change', () => {
         if (_settingEditorValue) return; // Suppress during setValue
@@ -370,6 +383,165 @@ function initializeCodeMirror() {
             updateDFStats();
         }
     });
+}
+
+/* ========== HTML → MARKDOWN CONVERSION ========== */
+
+function htmlToMarkdown(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    return nodeToMarkdown(doc.body).trim();
+}
+
+function nodeToMarkdown(node, ctx = {}) {
+    if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent;
+        // Preserve whitespace collapsing like a browser does
+        return text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+    const tag = node.tagName.toLowerCase();
+    const children = () => Array.from(node.childNodes).map(n => nodeToMarkdown(n, ctx)).join('');
+    const childrenBlock = () => Array.from(node.childNodes).map(n => nodeToMarkdown(n, ctx)).join('').trim();
+
+    switch (tag) {
+        case 'h1': return `\n\n# ${childrenBlock()}\n\n`;
+        case 'h2': return `\n\n## ${childrenBlock()}\n\n`;
+        case 'h3': return `\n\n### ${childrenBlock()}\n\n`;
+        case 'h4': return `\n\n#### ${childrenBlock()}\n\n`;
+        case 'h5': return `\n\n##### ${childrenBlock()}\n\n`;
+        case 'h6': return `\n\n###### ${childrenBlock()}\n\n`;
+
+        case 'p':  return `\n\n${childrenBlock()}\n\n`;
+        case 'br': return '  \n';
+
+        case 'strong':
+        case 'b':  return `**${children()}**`;
+
+        case 'em':
+        case 'i':  return `*${children()}*`;
+
+        case 's':
+        case 'del':
+        case 'strike': return `~~${children()}~~`;
+
+        case 'code': {
+            const parent = node.parentElement && node.parentElement.tagName.toLowerCase();
+            if (parent === 'pre') return node.textContent; // handled by pre
+            return `\`${node.textContent}\``;
+        }
+
+        case 'pre': {
+            const codeEl = node.querySelector('code');
+            const lang = (() => {
+                if (!codeEl) return '';
+                const cls = codeEl.className || '';
+                const m = cls.match(/language-(\S+)/);
+                return m ? m[1] : '';
+            })();
+            const code = codeEl ? codeEl.textContent : node.textContent;
+            return `\n\n\`\`\`${lang}\n${code.trim()}\n\`\`\`\n\n`;
+        }
+
+        case 'blockquote': {
+            const inner = childrenBlock();
+            return '\n\n' + inner.split('\n').map(l => '> ' + l).join('\n') + '\n\n';
+        }
+
+        case 'a': {
+            const href = node.getAttribute('href') || '';
+            const text = children().trim();
+            if (!href || href === text) return text;
+            return `[${text}](${href})`;
+        }
+
+        case 'img': {
+            const src = node.getAttribute('src') || '';
+            const alt = node.getAttribute('alt') || '';
+            return `![${alt}](${src})`;
+        }
+
+        case 'ul': {
+            const items = Array.from(node.children)
+                .filter(c => c.tagName.toLowerCase() === 'li')
+                .map(li => {
+                    const inner = nodeToMarkdown(li, { ...ctx, listType: 'ul' }).trim();
+                    return `- ${inner}`;
+                });
+            return '\n\n' + items.join('\n') + '\n\n';
+        }
+
+        case 'ol': {
+            const items = Array.from(node.children)
+                .filter(c => c.tagName.toLowerCase() === 'li')
+                .map((li, i) => {
+                    const inner = nodeToMarkdown(li, { ...ctx, listType: 'ol' }).trim();
+                    return `${i + 1}. ${inner}`;
+                });
+            return '\n\n' + items.join('\n') + '\n\n';
+        }
+
+        case 'li': {
+            return children().trim();
+        }
+
+        case 'hr': return '\n\n---\n\n';
+
+        case 'table': {
+            const rows = Array.from(node.querySelectorAll('tr'));
+            if (rows.length === 0) return childrenBlock();
+            const toCell = td => nodeToMarkdown(td, ctx).trim().replace(/\|/g, '\\|');
+            const headerRow = rows[0];
+            const headers = Array.from(headerRow.querySelectorAll('th, td')).map(toCell);
+            const separator = headers.map(() => '---');
+            const bodyRows = rows.slice(1).map(tr =>
+                Array.from(tr.querySelectorAll('th, td')).map(toCell)
+            );
+            const lines = [
+                '| ' + headers.join(' | ') + ' |',
+                '| ' + separator.join(' | ') + ' |',
+                ...bodyRows.map(r => '| ' + r.join(' | ') + ' |')
+            ];
+            return '\n\n' + lines.join('\n') + '\n\n';
+        }
+
+        case 'div':
+        case 'section':
+        case 'article':
+        case 'main':
+        case 'header':
+        case 'footer':
+        case 'aside':
+        case 'nav': {
+            const inner = childrenBlock();
+            return inner ? `\n\n${inner}\n\n` : '';
+        }
+
+        case 'span':
+        case 'abbr':
+        case 'cite':
+        case 'mark':
+        case 'small':
+        case 'sub':
+        case 'sup':
+        case 'td':
+        case 'th':
+            return children();
+
+        // Skip non-content elements
+        case 'script':
+        case 'style':
+        case 'head':
+        case 'meta':
+        case 'link':
+        case 'noscript':
+            return '';
+
+        default:
+            return children();
+    }
 }
 
 function getCodeMirrorTheme() {
